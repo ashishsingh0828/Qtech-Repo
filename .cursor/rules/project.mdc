@@ -11,7 +11,7 @@ alwaysApply: true
   Web features: apps/web/src/features/<name>. One place per concept:
   permissions and roles in shared/permissions + shared/roles, metric
   definitions in shared/metrics, constants in shared/constants.
-- Database: PostgreSQL localhost:2001, database qtech_service_hub, via Prisma.
+- Database: PostgreSQL localhost:2002, database qtech_service_hub, via Prisma.
   Ports: web 5173, server 4000. The web app calls /api through the Vite proxy.
 
 ## Coding rules

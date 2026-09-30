@@ -1,3 +1,5 @@
+import { addDays, format, parseISO } from "date-fns";
+
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"] as const;
 
 export function todayInTimeZone(timeZone: string, now: Date = new Date()): string {
@@ -14,6 +16,10 @@ export function todayInTimeZone(timeZone: string, now: Date = new Date()): strin
     throw new Error(`Unable to resolve the current date in ${timeZone}`);
   }
   return `${year}-${month}-${day}`;
+}
+
+export function addCalendarDays(isoDate: string, days: number): string {
+  return format(addDays(parseISO(`${isoDate}T12:00:00Z`), days), "yyyy-MM-dd");
 }
 
 export function formatDisplayDate(isoDate: string): string {

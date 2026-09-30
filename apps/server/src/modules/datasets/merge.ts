@@ -9,6 +9,7 @@ import { prisma } from "../../lib/prisma";
 import { syncMirrorFields } from "./mirrors";
 import { parseWorkbook } from "./parse";
 import { lockDataset } from "./structure";
+import { applySystemColumns } from "./systemColumns";
 
 const PREVIEW_TTL_MS = 15 * 60 * 1000;
 
@@ -84,8 +85,13 @@ export async function confirmMerge(actor: PublicUser, datasetId: string, token: 
     async (tx) => {
       await lockDataset(tx, datasetId);
       const dataset = await tx.dataset.findUnique({ where: { id: datasetId }, select: { schema: true } });
-      const schema = parseDatasetSchema(dataset?.schema);
-      if (!schema) throw new AppError("INTERNAL", 500, "Dataset schema is invalid.");
+      const parsedSchema = parseDatasetSchema(dataset?.schema);
+      if (!parsedSchema) throw new AppError("INTERNAL", 500, "Dataset schema is invalid.");
+      const schema = applySystemColumns(parsedSchema);
+      await tx.dataset.update({
+        where: { id: datasetId },
+        data: { schema: schema as unknown as Prisma.InputJsonValue },
+      });
       for (const update of plan.updates) {
         const row = await tx.row.findFirst({ where: { id: update.rowId, datasetId, deletedAt: null } });
         if (!row) continue;

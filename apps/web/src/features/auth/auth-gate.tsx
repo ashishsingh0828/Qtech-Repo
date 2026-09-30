@@ -89,6 +89,7 @@ export function AuthGate() {
       value={{
         user: session.user,
         permissions: session.permissions,
+        countryCode: session.countryCode,
         refresh: async () => {
           await query.refetch();
         },

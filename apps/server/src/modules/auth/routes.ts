@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { env } from "../../env";
 import { permissionsFor } from "../../lib/account";
 import { asyncHandler } from "../../lib/asyncHandler";
 import { readRetryAfterSeconds } from "../../lib/login-rate-limit";
@@ -22,7 +23,7 @@ authRouter.post(
         ip: req.ip || "unknown",
       });
       setSessionCookie(res, result.token);
-      res.status(200).json({ user: result.user, permissions: result.permissions });
+      res.status(200).json({ user: result.user, permissions: result.permissions, countryCode: env.DEFAULT_COUNTRY_CODE });
     } catch (error) {
       const retryAfter = readRetryAfterSeconds(error);
       if (retryAfter !== undefined) res.setHeader("Retry-After", String(retryAfter));
@@ -48,7 +49,7 @@ authRouter.get(
   asyncHandler(async (req, res) => {
     const user = currentUser(req);
     const permissions = await permissionsFor(user.role);
-    res.status(200).json({ user, permissions });
+    res.status(200).json({ user, permissions, countryCode: env.DEFAULT_COUNTRY_CODE });
   }),
 );
 
