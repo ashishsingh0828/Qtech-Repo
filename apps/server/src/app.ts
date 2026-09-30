@@ -11,6 +11,7 @@ import { errorHandler } from "./middleware/errorHandler";
 import { requestId } from "./middleware/requestId";
 import { accessRouter } from "./modules/access/routes";
 import { authRouter } from "./modules/auth/routes";
+import { datasetsRouter } from "./modules/datasets/routes";
 import { usersRouter } from "./modules/users/routes";
 import { healthRouter } from "./routes/health";
 import { apiNotFound } from "./routes/notFound";
@@ -36,6 +37,7 @@ export function createApp() {
   app.use("/api/health", healthRouter);
   app.use("/api/auth", authRouter);
   app.use("/api/users", usersRouter);
+  app.use("/api/datasets", datasetsRouter);
   app.use("/api/access", accessRouter);
 
   if (env.NODE_ENV === "production") {
