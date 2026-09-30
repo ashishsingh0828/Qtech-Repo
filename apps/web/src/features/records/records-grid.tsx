@@ -53,6 +53,8 @@ type GridProps = {
   onRestoreValue: (row: RowProjection, column: DatasetColumn, value: StoredCell) => void;
   onReadOnly: (column: DatasetColumn) => void;
   onRange: (start: number, end: number) => void;
+  onOpenRow?: (row: RowProjection) => void;
+  onWorkflow?: (row: RowProjection) => void;
   canStructure?: boolean;
   onRenameColumn?: (column: DatasetColumn, label: string) => void;
   onInsertColumn?: (column: DatasetColumn, side: "left" | "right") => void;
@@ -267,7 +269,7 @@ export function RecordsGrid(props: GridProps) {
                       onChange={(checked) => props.onToggleRow(row.id, checked)}
                     />
                   </div>
-                  <RowIndex row={props.rows[virtualRow.index] ?? row} width={INDEX_W} canManage={props.canManage} onInsert={props.onInsert} onDuplicate={props.onDuplicate} onDelete={props.onDelete} />
+                  <RowIndex row={props.rows[virtualRow.index] ?? row} width={INDEX_W} canManage={props.canManage} onInsert={props.onInsert} onDuplicate={props.onDuplicate} onDelete={props.onDelete} onOpen={props.onOpenRow} />
                   {props.pinned.map((column) => (
                     <DataCell key={column.key} row={row} column={column} width={COL_W} grid={props} />
                   ))}
@@ -506,8 +508,15 @@ function DataCell({ row, column, width, grid }: { row: RowProjection; column: Da
         const gridNode = event.currentTarget.closest("[data-records-grid]");
         if (gridNode instanceof HTMLElement) gridNode.focus();
       }}
-      onClick={() => grid.onActiveCell({ rowId: row.id, columnKey: column.key })}
+      onClick={() => {
+        grid.onActiveCell({ rowId: row.id, columnKey: column.key });
+        if (isValidatedColumn(column)) grid.onWorkflow?.(row);
+      }}
       onDoubleClick={() => {
+        if (isValidatedColumn(column)) {
+          grid.onWorkflow?.(row);
+          return;
+        }
         if (!editable) grid.onReadOnly(column);
         else grid.onStartEdit(row, column);
       }}
@@ -573,6 +582,10 @@ function CellValue({
   );
 }
 
+function isValidatedColumn(column: DatasetColumn): boolean {
+  return column.key === "validated" || column.semantic === "validated";
+}
+
 function RowIndex({
   row,
   width,
@@ -580,6 +593,7 @@ function RowIndex({
   onInsert,
   onDuplicate,
   onDelete,
+  onOpen,
 }: {
   row: RowProjection;
   width: number;
@@ -587,12 +601,15 @@ function RowIndex({
   onInsert: (rowId: string, place: "above" | "below") => void;
   onDuplicate: (rowId: string) => void;
   onDelete: (rowId: string) => void;
+  onOpen?: (row: RowProjection) => void;
 }) {
   const when = formatDistanceToNow(new Date(row.updatedAt), { addSuffix: true });
   const badge = `Updated ${when}${row.updatedByName ? ` by ${row.updatedByName}` : ""}`;
   return (
     <div className="flex h-full min-w-0 items-center gap-1 px-1 tabular-nums text-[13px] text-ink-2" style={{ width }} title={badge}>
-      <span className="min-w-0 flex-1 truncate">{row.position}</span>
+      <button type="button" className="min-w-0 flex-1 truncate text-left" onDoubleClick={() => onOpen?.(row)}>
+        {row.position}
+      </button>
       {canManage ? (
         <Popover>
           <PopoverTrigger asChild>

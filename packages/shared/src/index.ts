@@ -22,6 +22,7 @@ export {
 } from "./datasetSchema";
 export type { ColumnType, DatasetColumn, DatasetGroup, DatasetSchema, DatasetSummary } from "./datasetSchema";
 export {
+  addCalendarDays,
   excelDateToISO,
   formatDisplayDate,
   formatDisplayDateTime,
@@ -60,8 +61,12 @@ export {
   isValidationOverdue,
   isWarrantyExpired,
   nextDuePmsDate,
+  pmsEntryStatus,
+  warrantyLiveStatus,
 } from "./metrics";
-export type { EffectiveAmcStatus, MetricKey } from "./metrics";
+export type { EffectiveAmcStatus, MetricKey, PmsEntryStatus, WarrantyLive } from "./metrics";
+export { QUICK_FILTERS, QUICK_FILTER_KEYS, matchesQuickFilter, quickFiltersForRole } from "./quickFilters";
+export type { FilterSnapshot, QuickFilterDefinition, QuickFilterKey } from "./quickFilters";
 export {
   CAPABILITIES,
   DEFAULT_ROLE_GROUP_ACCESS,

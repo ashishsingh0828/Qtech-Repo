@@ -3,7 +3,9 @@ import {
   COLUMN_TYPES,
   RECENT_EDIT_HOURS,
   ROLE_REGISTRY,
+  UNDO_SECONDS,
   canEditGroup,
+  canPerformAction,
   hasCapability,
   isServerManagedField,
 } from "@app/shared";
@@ -48,6 +50,7 @@ import { useAuth } from "../auth/auth-gate";
 import { downloadWorkbook } from "./download";
 import { MobileCards } from "./records-mobile";
 import { CellMenuHost, RecordsGrid } from "./records-grid";
+import { RecordDrawer } from "./record-drawer";
 import {
   applyView,
   defaultHidden,
@@ -66,7 +69,7 @@ type ConflictState = EditorState & { byName: string; version: number };
 
 export function RecordsPage() {
   const { datasetId = "" } = useParams();
-  const { user, permissions } = useAuth();
+  const { user, permissions, countryCode } = useAuth();
   const searchRef = useRef<HTMLInputElement>(null);
   const [groupId, setGroupId] = useState("");
   const [advanced, setAdvanced] = useState(false);
@@ -91,6 +94,12 @@ export function RecordsPage() {
   const [bannerDismissed, setBannerDismissed] = useState(false);
   const [insertAt, setInsertAt] = useState<{ column: DatasetColumn; side: "left" | "right" } | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<DatasetColumn | null>(null);
+  const [tab, setTab] = useState("");
+  const [drawerId, setDrawerId] = useState<string | null>(null);
+  const [drawerFocus, setDrawerFocus] = useState("");
+  const [assignOpen, setAssignOpen] = useState(false);
+  const [validatorId, setValidatorId] = useState("");
+  const [serviceId, setServiceId] = useState("");
   const showAdvanced = canRestore;
 
   const datasetQuery = useQuery({
@@ -98,8 +107,17 @@ export function RecordsPage() {
     queryFn: () => api<{ dataset: DatasetDetail }>(`/api/datasets/${datasetId}`),
   });
   const rowsQuery = useQuery({
-    queryKey: ["dataset-rows", datasetId],
-    queryFn: () => api<RowsResponse>(`/api/datasets/${datasetId}/rows`),
+    queryKey: ["dataset-rows", datasetId, tab],
+    queryFn: () => api<RowsResponse>(`/api/datasets/${datasetId}/rows${tab ? `?tab=${encodeURIComponent(tab)}` : ""}`),
+  });
+  const summaryQuery = useQuery({
+    queryKey: ["dataset-summary", datasetId],
+    queryFn: () => api<{ filters: Array<{ key: string; label: string; count: number }> }>(`/api/datasets/${datasetId}/summary`),
+  });
+  const assigneesQuery = useQuery({
+    queryKey: ["assignees", datasetId],
+    enabled: canStructure || user.role === "admin" || user.role === "manager",
+    queryFn: () => api<{ users: Array<{ id: string; name: string; role: string }> }>(`/api/datasets/${datasetId}/assignees`),
   });
   const editsQuery = useQuery({
     queryKey: ["recent-edits", datasetId],
@@ -379,6 +397,26 @@ export function RecordsPage() {
           </>
         }
       />
+      <div className="flex min-w-0 gap-1 overflow-x-auto border-b border-hairline">
+        <button
+          type="button"
+          className={`min-h-11 shrink-0 border-b-2 px-3 text-sm ${tab === "" ? "border-gold text-ink" : "border-transparent text-ink-2"}`}
+          onClick={() => setTab("")}
+        >
+          All
+        </button>
+        {(summaryQuery.data?.filters ?? []).map((filter) => (
+          <button
+            key={filter.key}
+            type="button"
+            className={`inline-flex min-h-11 shrink-0 items-center gap-2 border-b-2 px-3 text-sm ${tab === filter.key ? "border-gold text-ink" : "border-transparent text-ink-2"}`}
+            onClick={() => setTab((current) => (current === filter.key ? "" : filter.key))}
+          >
+            {filter.label}
+            <Badge>{filter.count}</Badge>
+          </button>
+        ))}
+      </div>
       {canStructure && autoNamedCount > 0 && !bannerDismissed ? (
         <div className="flex min-w-0 items-start justify-between gap-3 rounded-control border border-hairline bg-gold-soft px-3 py-2 text-sm text-ink">
           <p>
@@ -617,6 +655,14 @@ export function RecordsPage() {
                 void structure(`/columns/${encodeURIComponent(column.key)}`, "PATCH", { hidden: true }, "Column hidden.");
               }}
               onDeleteColumn={setDeleteTarget}
+              onOpenRow={(row) => {
+                setDrawerFocus("");
+                setDrawerId(row.id);
+              }}
+              onWorkflow={(row) => {
+                setDrawerFocus("data_validation");
+                setDrawerId(row.id);
+              }}
             />
           </div>
           <MobileCards
@@ -636,6 +682,10 @@ export function RecordsPage() {
             }}
             saving={saving}
             onSave={(row, changes) => saveChanges(row, changes, row.version)}
+            onOpen={(row) => {
+              setDrawerFocus("");
+              setDrawerId(row.id);
+            }}
           />
           <div className="flex min-w-0 flex-wrap items-center justify-between gap-2 text-sm text-ink-2">
             <p className="tabular-nums">
@@ -651,6 +701,37 @@ export function RecordsPage() {
         <div className="fixed inset-x-4 bottom-20 z-popover flex min-w-0 flex-wrap items-center justify-between gap-2 rounded-card border border-hairline bg-surface px-4 py-3 shadow-float md:bottom-6">
           <p className="text-sm text-ink">{selected.size} rows selected</p>
           <div className="flex gap-2">
+            <Button
+              variant="secondary"
+              onClick={() => {
+                const first = [...selected][0];
+                if (!first) return;
+                setDrawerFocus("");
+                setDrawerId(first);
+              }}
+            >
+              Open
+            </Button>
+            {canPerformAction(user.role, "validate", (key) => canEditGroup(permissions.groupAccess, key)) ? (
+              <Button variant="secondary" onClick={() => void bulk("/bulk/validate", { rowIds: [...selected], result: "Yes" })}>
+                Validate Yes
+              </Button>
+            ) : null}
+            {hasCapability(user.role, "verify") ? (
+              <Button variant="secondary" onClick={() => void bulk("/bulk/verify", { rowIds: [...selected], verified: true })}>
+                Verify
+              </Button>
+            ) : null}
+            {hasCapability(user.role, "assign") ? (
+              <Button variant="secondary" onClick={() => setAssignOpen(true)}>
+                Assign
+              </Button>
+            ) : null}
+            {user.role === "admin" || user.role === "manager" ? (
+              <Button variant="secondary" onClick={() => void bulk("/bulk/closeHistorical", { rowIds: [...selected] })}>
+                Close historical PMS
+              </Button>
+            ) : null}
             <Button onClick={() => void exportRows(detail.name, [...selected])}>Export selected</Button>
             <Button variant="secondary" onClick={() => setSelected(new Set())}>
               Deselect all
@@ -659,6 +740,76 @@ export function RecordsPage() {
         </div>
       ) : null}
       <CellMenuHost />
+      <RecordDrawer
+        datasetId={datasetId}
+        row={sourceRows.find((row) => row.id === drawerId) ?? null}
+        schema={detail.schema}
+        role={user.role}
+        groupAccess={permissions.groupAccess}
+        countryCode={countryCode ?? "+91"}
+        focusGroupKey={drawerFocus}
+        onOpenChange={(open) => {
+          if (!open) setDrawerId(null);
+        }}
+      />
+      <Dialog open={assignOpen} onOpenChange={setAssignOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Assign</DialogTitle>
+            <DialogDescription>Choose a validator, a service user, or both.</DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-3 px-5">
+            <Label>Validator</Label>
+            <Select value={validatorId || "none"} onValueChange={setValidatorId}>
+              <SelectTrigger aria-label="Validator">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">Unassigned</SelectItem>
+                {(assigneesQuery.data?.users ?? [])
+                  .filter((person) => person.role === "validator")
+                  .map((person) => (
+                    <SelectItem key={person.id} value={person.id}>
+                      {person.name}
+                    </SelectItem>
+                  ))}
+              </SelectContent>
+            </Select>
+            <Label>Service</Label>
+            <Select value={serviceId || "none"} onValueChange={setServiceId}>
+              <SelectTrigger aria-label="Service">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">Unassigned</SelectItem>
+                {(assigneesQuery.data?.users ?? [])
+                  .filter((person) => person.role === "service")
+                  .map((person) => (
+                    <SelectItem key={person.id} value={person.id}>
+                      {person.name}
+                    </SelectItem>
+                  ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <DialogFooter>
+            <Button variant="secondary" onClick={() => setAssignOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                void bulk("/bulk/assign", {
+                  rowIds: [...selected],
+                  validatorId: validatorId && validatorId !== "none" ? validatorId : null,
+                  serviceId: serviceId && serviceId !== "none" ? serviceId : null,
+                }).then(() => setAssignOpen(false));
+              }}
+            >
+              Assign
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <InsertColumnDialog
         target={insertAt}
         onOpenChange={(open) => {
@@ -705,6 +856,18 @@ export function RecordsPage() {
       </Dialog>
     </div>
   );
+
+  async function bulk(path: string, body: unknown) {
+    try {
+      const result = await api<{ results: Array<{ ok: boolean }> }>(`/api/datasets/${datasetId}${path}`, { method: "POST", body });
+      const saved = result.results.filter((item) => item.ok).length;
+      await queryClient.invalidateQueries({ queryKey: ["dataset-rows", datasetId] });
+      await queryClient.invalidateQueries({ queryKey: ["dataset-summary", datasetId] });
+      toast("Saved", { duration: UNDO_SECONDS * 1000, description: `${saved} of ${result.results.length} rows updated.` });
+    } catch (error) {
+      if (!isUnauthenticated(error)) toast.error(errorText(error, "Could not update the rows."));
+    }
+  }
 
   async function structure(path: string, method: string, body: unknown, message: string): Promise<boolean> {
     try {

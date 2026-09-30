@@ -3,6 +3,7 @@ import { createApp } from "./app";
 import { env } from "./env";
 import { ensureDefaultGroupAccess } from "./lib/access";
 import { ensureBootstrapAdmin } from "./modules/auth/service";
+import { ensureAllSystemColumns } from "./modules/datasets/systemColumns";
 import { databaseAddress } from "./lib/databaseAddress";
 import { logger } from "./lib/logger";
 import { prisma } from "./lib/prisma";
@@ -35,6 +36,12 @@ async function main(): Promise<void> {
     const code = error instanceof Prisma.PrismaClientKnownRequestError ? error.code : "unknown";
     logger.fatal(`Failed to bootstrap admin (${code})`);
     process.exit(1);
+  }
+
+  try {
+    await ensureAllSystemColumns();
+  } catch (error) {
+    logger.error({ err: error }, "Failed to ensure system columns");
   }
 
   const app = createApp();

@@ -5,6 +5,7 @@ import { queryClient } from "../../lib/query";
 export type SessionState = {
   user: PublicUser;
   permissions: Permissions;
+  countryCode?: string;
 };
 
 export const meQueryKey = ["auth", "me"] as const;

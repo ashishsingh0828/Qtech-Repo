@@ -1,4 +1,4 @@
-import { COLUMN_TYPES, MAX_ROWS } from "@app/shared";
+import { COLUMN_TYPES, MAX_ROWS, QUICK_FILTER_KEYS } from "@app/shared";
 import { z } from "zod";
 
 const idParams = z.object({
@@ -48,6 +48,11 @@ export const listRowsSchema = z.object({
     q: queryString(),
     limit: queryInt(1, MAX_ROWS),
     offset: queryInt(0, MAX_ROWS),
+    tab: z.preprocess((value) => (Array.isArray(value) ? value[0] : value), z.enum(QUICK_FILTER_KEYS).optional()),
+    sort: z.preprocess(
+      (value) => (Array.isArray(value) ? value[0] : value),
+      z.string().regex(/^(position|updatedAt):(asc|desc)$/).optional(),
+    ),
   }),
   params: idParams,
 });

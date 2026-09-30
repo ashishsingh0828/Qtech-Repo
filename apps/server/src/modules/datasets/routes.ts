@@ -40,6 +40,7 @@ import {
   updateRowSchema,
 } from "./schema";
 import { exportDataset, importDataset, listDatasets } from "./service";
+import { workflowRouter } from "../workflows/routes";
 import {
   addColumn,
   addGroup,
@@ -62,6 +63,7 @@ const upload = multer({
 export const datasetsRouter = Router();
 
 datasetsRouter.use(requireAuth);
+datasetsRouter.use(workflowRouter);
 
 datasetsRouter.get(
   "/",

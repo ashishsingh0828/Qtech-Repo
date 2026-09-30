@@ -25,6 +25,7 @@ export function MobileCards({
   onToggle,
   onSave,
   saving,
+  onOpen,
 }: {
   rows: RowProjection[];
   pinned: DatasetColumn[];
@@ -35,6 +36,7 @@ export function MobileCards({
   onToggle: (rowId: string, checked: boolean) => void;
   onSave: (row: RowProjection, changes: Record<string, string | null>) => Promise<boolean>;
   saving: boolean;
+  onOpen?: (row: RowProjection) => void;
 }) {
   const [editing, setEditing] = useState<RowProjection | null>(null);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
@@ -57,7 +59,11 @@ export function MobileCards({
       {rows.map((row) => {
         const when = formatDistanceToNow(new Date(row.updatedAt), { addSuffix: true });
         return (
-          <article key={row.id} className="flex min-w-0 flex-col gap-2 rounded-card border border-hairline bg-surface p-5">
+          <article
+            key={row.id}
+            className="flex min-w-0 flex-col gap-2 rounded-card border border-hairline bg-surface p-5"
+            onClick={() => onOpen?.(row)}
+          >
             <div className="flex items-center justify-between gap-2">
               <button
                 type="button"
@@ -65,7 +71,10 @@ export function MobileCards({
                 aria-checked={selected.has(row.id)}
                 aria-label={`Select row ${row.position}`}
                 className={cn("size-4 rounded-[4px] border border-hairline", selected.has(row.id) && "border-navy bg-navy")}
-                onClick={() => onToggle(row.id, !selected.has(row.id))}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onToggle(row.id, !selected.has(row.id));
+                }}
               />
               <p className="min-w-0 flex-1 truncate text-sm text-ink-2">
                 Updated {when}

@@ -4,10 +4,21 @@ import { Workbook, type Cell } from "exceljs";
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
+export type ExportCall = {
+  customer: string;
+  type: string;
+  description: string;
+  reportedAt: Date;
+  status: string;
+  resolvedAt: Date | null;
+  note: string | null;
+};
+
 export async function buildExportWorkbook(
   schema: DatasetSchema,
   rows: Array<{ data: unknown }>,
   groupAccess: Permissions["groupAccess"],
+  calls?: ExportCall[],
 ): Promise<Buffer> {
   const groups = schema.groups
     .filter((group) => group.deletedAt == null && canViewGroup(groupAccess, group.groupKey))
@@ -57,6 +68,24 @@ export async function buildExportWorkbook(
       ySplit: 2,
     },
   ];
+
+  if (calls) {
+    const callSheet = workbook.addWorksheet("Service Calls");
+    const headers = ["Customer", "Type", "Description", "Reported", "Status", "Resolved", "Note"];
+    headers.forEach((header, index) => {
+      callSheet.getCell(1, index + 1).value = header;
+    });
+    calls.forEach((call, index) => {
+      const rowNumber = index + 2;
+      callSheet.getCell(rowNumber, 1).value = call.customer;
+      callSheet.getCell(rowNumber, 2).value = call.type;
+      callSheet.getCell(rowNumber, 3).value = call.description;
+      callSheet.getCell(rowNumber, 4).value = call.reportedAt;
+      callSheet.getCell(rowNumber, 5).value = call.status;
+      if (call.resolvedAt) callSheet.getCell(rowNumber, 6).value = call.resolvedAt;
+      if (call.note) callSheet.getCell(rowNumber, 7).value = call.note;
+    });
+  }
 
   const output = await workbook.xlsx.writeBuffer();
   return Buffer.from(output);

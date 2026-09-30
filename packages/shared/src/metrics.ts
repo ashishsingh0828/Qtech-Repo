@@ -137,6 +137,31 @@ export function isPmsDueSoon(
   return calendarDaysBetween(today, due) <= withinDays;
 }
 
+export type WarrantyLive = "Active" | "Expiring" | "Expired" | "Unknown";
+
+export function warrantyLiveStatus(endDate: string | null | undefined, today: string): WarrantyLive {
+  const end = present(endDate);
+  if (!end) return "Unknown";
+  if (end < today) return "Expired";
+  if (isExpiringSoon(end, today)) return "Expiring";
+  return "Active";
+}
+
+export type PmsEntryStatus = "Done" | "Upcoming" | "Due soon" | "Overdue" | "Lapsed";
+
+export function pmsEntryStatus(input: {
+  scheduled: string;
+  done: string | null | undefined;
+  endDate: string | null | undefined;
+  today: string;
+}): PmsEntryStatus {
+  if (!isContractLive(input.endDate, input.today)) return "Lapsed";
+  if (present(input.done)) return "Done";
+  if (input.scheduled < input.today) return "Overdue";
+  if (calendarDaysBetween(input.today, input.scheduled) <= PMS_SOON_DAYS) return "Due soon";
+  return "Upcoming";
+}
+
 export function isFollowupDue(nextFollowUp: string | null | undefined, today: string): boolean {
   const due = present(nextFollowUp);
   return due != null && due <= today;

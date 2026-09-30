@@ -4,6 +4,10 @@ import {
   MAX_ROWS,
   RECENT_EDIT_HOURS,
   TEXT_SEARCH_TYPES,
+  matchesQuickFilter,
+  quickFiltersForRole,
+  todayInTimeZone,
+  type QuickFilterKey,
   derivedDays,
   groupForColumn,
   isServerManagedField,
@@ -24,6 +28,7 @@ import { AppError } from "../../lib/errors";
 import { publishEvent } from "../../lib/events";
 import { logger } from "../../lib/logger";
 import { prisma } from "../../lib/prisma";
+import { env } from "../../env";
 import { syncMirrorFields } from "./mirrors";
 
 type RowRecord = {
@@ -49,24 +54,49 @@ export async function getDatasetDetail(actor: PublicUser, datasetId: string): Pr
 export async function listRows(
   actor: PublicUser,
   datasetId: string,
-  query: { q?: string; limit?: number; offset?: number },
+  query: { q?: string; limit?: number; offset?: number; tab?: QuickFilterKey; sort?: string },
 ): Promise<{ total: number; rows: RowProjection[] }> {
   const { schema, permissions } = await loadContext(actor, datasetId);
   const projected = projectSchema(schema, permissions.groupAccess);
   const textKeys = projected.columns.filter((column) => TEXT_SEARCH_TYPES.has(column.type)).map((column) => column.key);
   const needle = query.q?.trim().toLowerCase() ?? "";
+  if (query.tab && !quickFiltersForRole(actor.role).some((filter) => filter.key === query.tab)) {
+    throw new AppError("FORBIDDEN", 403, "That filter is not available for your role.");
+  }
   const stored = await prisma.row.findMany({
     where: { datasetId, deletedAt: null },
     orderBy: { position: "asc" },
     take: MAX_ROWS,
-    select: { id: true, position: true, version: true, updatedAt: true, updatedByName: true, data: true },
+    select: {
+      id: true,
+      position: true,
+      version: true,
+      updatedAt: true,
+      updatedByName: true,
+      data: true,
+      validated: true,
+      validationDue: true,
+      verified: true,
+      endDate: true,
+      amcStatus: true,
+      nextFollowUp: true,
+      nextDuePms: true,
+      assignedValidatorId: true,
+      assignedServiceId: true,
+    },
   });
-  const matched = stored.filter((row) => (needle ? matchesText(jsonRecord(row.data), textKeys, needle) : true));
+  const today = currentDay();
+  const now = new Date();
+  const matched = stored.filter((row) => {
+    if (query.tab && !matchesQuickFilter(query.tab, mirrorSnapshot(row), today, actor.id, now)) return false;
+    return needle ? matchesText(jsonRecord(row.data), textKeys, needle) : true;
+  });
+  const sorted = sortRows(matched, query.sort);
   const offset = query.offset ?? 0;
   const limit = query.limit ?? MAX_ROWS;
-  const page = matched.slice(offset, offset + Math.min(limit, MAX_ROWS));
+  const page = sorted.slice(offset, offset + Math.min(limit, MAX_ROWS));
   return {
-    total: matched.length,
+    total: sorted.length,
     rows: page.map((row) => toProjection(row, projected.columns, schema)),
   };
 }
@@ -466,6 +496,46 @@ function matchesText(data: Record<string, unknown>, keys: string[], needle: stri
     if (typeof value === "string" && value.toLowerCase().includes(needle)) return true;
   }
   return false;
+}
+
+function currentDay(): string {
+  return todayInTimeZone(env.APP_TIMEZONE);
+}
+
+function mirrorSnapshot(row: {
+  validated: string | null;
+  validationDue: Date | null;
+  verified: string | null;
+  endDate: Date | null;
+  amcStatus: string | null;
+  nextFollowUp: Date | null;
+  nextDuePms: Date | null;
+  updatedAt: Date;
+  assignedValidatorId: string | null;
+  assignedServiceId: string | null;
+}) {
+  return {
+    validated: row.validated,
+    validationDue: row.validationDue ? row.validationDue.toISOString().slice(0, 10) : null,
+    verified: row.verified,
+    endDate: row.endDate ? row.endDate.toISOString().slice(0, 10) : null,
+    amcStatus: row.amcStatus,
+    nextFollowUp: row.nextFollowUp ? row.nextFollowUp.toISOString().slice(0, 10) : null,
+    nextDuePms: row.nextDuePms ? row.nextDuePms.toISOString().slice(0, 10) : null,
+    updatedAt: row.updatedAt.toISOString(),
+    assignedValidatorId: row.assignedValidatorId,
+    assignedServiceId: row.assignedServiceId,
+  };
+}
+
+function sortRows<T extends { position: number; updatedAt: Date }>(rows: T[], sort: string | undefined): T[] {
+  if (!sort || sort === "position:asc") return rows;
+  const [field, direction] = sort.split(":");
+  const factor = direction === "desc" ? -1 : 1;
+  return [...rows].sort((left, right) => {
+    if (field === "updatedAt") return (left.updatedAt.getTime() - right.updatedAt.getTime()) * factor;
+    return (left.position - right.position) * factor;
+  });
 }
 
 function jsonRecord(value: Prisma.JsonValue | unknown): Record<string, unknown> {

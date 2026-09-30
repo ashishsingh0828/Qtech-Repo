@@ -15,6 +15,7 @@ import { publishEvent } from "../../lib/events";
 import { logger } from "../../lib/logger";
 import { prisma } from "../../lib/prisma";
 import { syncMirrorFields } from "./mirrors";
+import { applySystemColumns } from "./systemColumns";
 
 type ColumnInput = {
   label: string;
@@ -103,7 +104,7 @@ export async function updateColumn(
         column.type = patch.type;
         column.options = columnOptions(patch.type, column.options);
       }
-      const next = reindex(current);
+      const next = applySystemColumns(reindex(current));
       await saveSchema(tx, datasetId, next);
       await writeActivity(tx, actor, datasetId, actionId, "column.updated", { key });
       return next;
@@ -274,7 +275,7 @@ async function changeSchema(
   const actionId = randomUUID();
   const schema = await prisma.$transaction(async (tx) => {
     const current = await loadSchema(tx, datasetId);
-    const next = reindex(mutate(current));
+    const next = applySystemColumns(reindex(mutate(current)));
     await saveSchema(tx, datasetId, next);
     await writeActivity(tx, actor, datasetId, actionId, action, {});
     return next;

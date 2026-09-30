@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { DatasetSummary, PublicUser } from "@app/shared";
-import { cleanLabel, parseDatasetSchema } from "@app/shared";
+import { canViewGroup, cleanLabel, parseDatasetSchema } from "@app/shared";
 import { Prisma } from "@prisma/client";
 import { permissionsFor } from "../../lib/account";
 import { AppError } from "../../lib/errors";
@@ -10,6 +10,7 @@ import { prisma } from "../../lib/prisma";
 import { buildExportWorkbook } from "./export";
 import { syncMirrorFields } from "./mirrors";
 import { parseWorkbook } from "./parse";
+import { applySystemColumns } from "./systemColumns";
 
 export async function listDatasets(): Promise<DatasetSummary[]> {
   const datasets = await prisma.dataset.findMany({
@@ -45,7 +46,8 @@ export async function importDataset(actor: PublicUser, file: { originalname: str
   const sourceFileName = file.originalname.replace(/^.*[/\\]/, "").slice(0, 300);
   const actionId = randomUUID();
   const datasetId = randomUUID();
-  const schemaJson = parsed.schema as unknown as Prisma.InputJsonValue;
+  const schema = applySystemColumns(parsed.schema);
+  const schemaJson = schema as unknown as Prisma.InputJsonValue;
 
   await prisma.$transaction(
     async (tx) => {
@@ -63,7 +65,7 @@ export async function importDataset(actor: PublicUser, file: { originalname: str
         const slice = parsed.rows.slice(index, index + 500);
         await tx.row.createMany({
           data: slice.map((rowData, offset) => {
-            const synced = syncMirrorFields(rowData, parsed.schema);
+            const synced = syncMirrorFields(rowData, schema);
             return {
               datasetId,
               position: index + offset + 1,
@@ -144,8 +146,42 @@ export async function exportDataset(
           orderBy: { position: "asc" },
           select: { data: true },
         });
-  const body = await buildExportWorkbook(schema, rows, permissions.groupAccess);
+  const canSeeCalls =
+    canViewGroup(permissions.groupAccess, "complaint") || canViewGroup(permissions.groupAccess, "breakdown_calls");
+  const calls = canSeeCalls ? await exportCalls(dataset.id, rowIds) : undefined;
+  const body = await buildExportWorkbook(schema, rows, permissions.groupAccess, calls);
   return { filename: exportFilename(dataset.name), body };
+}
+
+async function exportCalls(datasetId: string, rowIds?: string[]) {
+  const calls = await prisma.serviceCall.findMany({
+    where: {
+      datasetId,
+      deletedAt: null,
+      ...(rowIds ? { rowId: { in: rowIds } } : {}),
+    },
+    orderBy: { reportedAt: "desc" },
+  });
+  const owners = await prisma.row.findMany({
+    where: { id: { in: calls.map((call) => call.rowId) } },
+    select: { id: true, data: true },
+  });
+  const names = new Map(owners.map((row) => [row.id, customerName(row.data)]));
+  return calls.map((call) => ({
+    customer: names.get(call.rowId) ?? "",
+    type: call.type,
+    description: call.description,
+    reportedAt: call.reportedAt,
+    status: call.status,
+    resolvedAt: call.resolvedAt,
+    note: call.note,
+  }));
+}
+
+function customerName(data: unknown): string {
+  if (typeof data !== "object" || data === null || Array.isArray(data)) return "";
+  const value = (data as Record<string, unknown>).customer_name;
+  return typeof value === "string" ? value : "";
 }
 
 function datasetName(filename: string): string {

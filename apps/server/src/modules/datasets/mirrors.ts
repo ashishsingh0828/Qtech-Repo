@@ -1,6 +1,6 @@
 import type { DatasetColumn, DatasetSchema } from "@app/shared";
-import { nextDuePmsDate, readField } from "@app/shared";
-import { contractDays } from "@app/shared";
+import { contractDays, effectiveAmcStatus, isWarrantyExpired, nextDuePmsDate, readField, warrantyLiveStatus } from "@app/shared";
+import { today } from "../../lib/time";
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -15,7 +15,16 @@ export type MirrorFields = {
   nextDuePms: Date | null;
 };
 
-export function syncMirrorFields(data: Record<string, unknown>, schema: DatasetSchema): MirrorFields {
+export type MirrorExtras = {
+  openCalls?: number;
+  lastCallDate?: string | null;
+};
+
+export function syncMirrorFields(
+  data: Record<string, unknown>,
+  schema: DatasetSchema,
+  extras?: MirrorExtras,
+): MirrorFields {
   const next: Record<string, string | number | boolean> = {};
   for (const [key, value] of Object.entries(data)) {
     if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") next[key] = value;
@@ -27,6 +36,13 @@ export function syncMirrorFields(data: Record<string, unknown>, schema: DatasetS
     if (key.startsWith("pm_date:") && value === "NA") delete dueSource[key];
   }
   writeDerived(next, schema.columns, "next_due_pms", nextDuePmsDate(dueSource));
+  const currentDay = today();
+  const endDate = isoField(next, schema.columns, "end_date");
+  writeDerived(next, schema.columns, "warranty_live", warrantyLiveStatus(endDate, currentDay));
+  const storedAmc = textOrNull(readField(next, schema.columns, "amc_status"));
+  writeDerived(next, schema.columns, "amc_status", effectiveAmcStatus(storedAmc, isWarrantyExpired(endDate, currentDay)));
+  if (extras && extras.openCalls != null) writeDerived(next, schema.columns, "open_calls", extras.openCalls);
+  if (extras && "lastCallDate" in extras) writeDerived(next, schema.columns, "last_call_date", extras.lastCallDate ?? null);
   return {
     data: next,
     validated: textOrNull(readField(next, schema.columns, "validated")),
