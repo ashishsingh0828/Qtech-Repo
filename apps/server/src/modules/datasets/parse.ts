@@ -380,8 +380,14 @@ function castDate(raw: RawValue): string | null {
   if (/^na$/i.test(trimmed)) return "NA";
   if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
   const parsed = Date.parse(trimmed);
-  if (!Number.isNaN(parsed)) return excelDateToISO(new Date(parsed));
-  return cleanLabel(trimmed);
+  if (Number.isNaN(parsed)) return cleanLabel(trimmed);
+  const date = new Date(parsed);
+  const zoned = trimmed.includes("T") || /(?:z|[+-]\d{2}:?\d{2})$/i.test(trimmed);
+  if (zoned) return excelDateToISO(date);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
 function castYesNo(raw: RawValue): string | null {

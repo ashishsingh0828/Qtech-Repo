@@ -381,7 +381,7 @@ function ColumnHeader({
           }}
         >
           <span className="min-w-0 flex-1 truncate">{column.label}</span>
-          {sort?.key === column.key ? <span className="text-gold">{sort.direction === "asc" ? "↑" : "↓"}</span> : null}
+          {sort?.key === column.key ? <span className="text-ink">{sort.direction === "asc" ? "↑" : "↓"}</span> : null}
         </button>
       )}
       <Popover>

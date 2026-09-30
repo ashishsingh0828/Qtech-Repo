@@ -15,6 +15,7 @@ import { useAuth } from "../auth/auth-gate";
 import { ChangePasswordDialog } from "../auth/change-password-dialog";
 import { endSession } from "../auth/session";
 import { DatasetSwitcher } from "../records/dataset-switcher";
+import { LiveStream } from "./live-stream";
 
 const ICONS: Record<NavIcon, ComponentType<{ className?: string; strokeWidth?: number }>> = {
   rows: Rows3,
@@ -132,6 +133,7 @@ export function AppShell() {
           )
         : null}
       <ChangePasswordDialog open={passwordOpen} onOpenChange={setPasswordOpen} />
+      <LiveStream />
     </div>
   );
 }

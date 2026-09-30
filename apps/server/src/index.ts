@@ -2,6 +2,7 @@ import { Prisma } from "@prisma/client";
 import { createApp } from "./app";
 import { env } from "./env";
 import { ensureDefaultGroupAccess } from "./lib/access";
+import { installProcessGuards, shutdownServer, startBackground } from "./lib/lifecycle";
 import { ensureBootstrapAdmin } from "./modules/auth/service";
 import { ensureAllSystemColumns } from "./modules/datasets/systemColumns";
 import { databaseAddress } from "./lib/databaseAddress";
@@ -48,23 +49,14 @@ async function main(): Promise<void> {
   const server = app.listen(env.PORT, () => {
     logger.info({ port: env.PORT }, `${env.APP_NAME} listening`);
   });
+  startBackground();
 
-  let shuttingDown = false;
-  const shutdown = (signal: string): void => {
-    if (shuttingDown) return;
-    shuttingDown = true;
-    logger.info({ signal }, "Shutting down");
-    server.close(() => {
-      void prisma.$disconnect().then(
-        () => process.exit(0),
-        () => process.exit(1),
-      );
-    });
-    setTimeout(() => process.exit(1), 10_000).unref();
+  const shutdown = (signal: string, code: number): void => {
+    shutdownServer(server, signal, code);
   };
-
-  process.on("SIGINT", () => shutdown("SIGINT"));
-  process.on("SIGTERM", () => shutdown("SIGTERM"));
+  installProcessGuards(shutdown);
+  process.on("SIGINT", () => shutdown("SIGINT", 0));
+  process.on("SIGTERM", () => shutdown("SIGTERM", 0));
 }
 
 void main();

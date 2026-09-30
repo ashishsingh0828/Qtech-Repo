@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { DatasetSummary, PublicUser } from "@app/shared";
+import type { DatasetSummary, Permissions, PublicUser } from "@app/shared";
 import { canViewGroup, cleanLabel, parseDatasetSchema } from "@app/shared";
 import { Prisma } from "@prisma/client";
 import { permissionsFor } from "../../lib/account";
@@ -148,12 +148,12 @@ export async function exportDataset(
         });
   const canSeeCalls =
     canViewGroup(permissions.groupAccess, "complaint") || canViewGroup(permissions.groupAccess, "breakdown_calls");
-  const calls = canSeeCalls ? await exportCalls(dataset.id, rowIds) : undefined;
+  const calls = canSeeCalls ? await exportCalls(dataset.id, permissions.groupAccess, rowIds) : undefined;
   const body = await buildExportWorkbook(schema, rows, permissions.groupAccess, calls);
   return { filename: exportFilename(dataset.name), body };
 }
 
-async function exportCalls(datasetId: string, rowIds?: string[]) {
+async function exportCalls(datasetId: string, groupAccess: Permissions["groupAccess"], rowIds?: string[]) {
   const calls = await prisma.serviceCall.findMany({
     where: {
       datasetId,
@@ -166,7 +166,8 @@ async function exportCalls(datasetId: string, rowIds?: string[]) {
     where: { id: { in: calls.map((call) => call.rowId) } },
     select: { id: true, data: true },
   });
-  const names = new Map(owners.map((row) => [row.id, customerName(row.data)]));
+  const canSeeCustomer = canViewGroup(groupAccess, "customer_detail");
+  const names = new Map(owners.map((row) => [row.id, canSeeCustomer ? customerName(row.data) : ""]));
   return calls.map((call) => ({
     customer: names.get(call.rowId) ?? "",
     type: call.type,
