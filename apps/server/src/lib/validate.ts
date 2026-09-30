@@ -18,6 +18,10 @@ export function validate<T extends ZodType>(schema: T): RequestHandler {
   };
 }
 
+export function validated<T>(req: Request): T {
+  return req.validated as T;
+}
+
 function zodDetails(error: ZodError): { path: PropertyKey[]; message: string }[] {
   return error.issues.map((issue) => ({
     path: issue.path,

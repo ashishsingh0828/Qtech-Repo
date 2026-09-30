@@ -20,7 +20,7 @@ export { ERROR_CODES, ERROR_STATUS } from "./errors";
 export type { ErrorCode } from "./errors";
 export type { DomainEvent } from "./events";
 export { isServerManagedField } from "./fields";
-export { normalizeGroupKey } from "./groupKey";
+export { CANONICAL_GROUPS, isGroupKeySlug, labelForGroupKey, normalizeGroupKey } from "./groupKey";
 export {
   METRICS,
   calendarDaysBetween,
@@ -46,26 +46,36 @@ export type { EffectiveAmcStatus, MetricKey } from "./metrics";
 export {
   CAPABILITIES,
   DEFAULT_ROLE_GROUP_ACCESS,
+  canEditGroup,
   canPerformAction,
+  canViewGroup,
+  capabilitiesForRole,
   hasCapability,
   normalizeAccess,
+  resolveGroupAccess,
 } from "./permissions";
 export type {
   ActionName,
   Capability,
+  GroupAccessMap,
   GroupEditCheck,
+  GroupPermission,
+  Permissions,
   RoleGroupAccessDefault,
   StoredAccessRole,
 } from "./permissions";
-export { ROLES, isRole } from "./roles";
-export type { Role } from "./roles";
+export { NAV_ICONS, ROLE_REGISTRY, ROLES, isRole } from "./roles";
+export type { NavIcon, NavItem, Role, RoleDefinition } from "./roles";
 export {
   callStatusSchema,
   callTypeSchema,
   dateOnlySchema,
   emailSchema,
+  groupKeySchema,
   healthResponseSchema,
+  passwordSchema,
   prioritySchema,
+  publicUserSchema,
   roleSchema,
 } from "./schemas";
-export type { HealthResponse } from "./schemas";
+export type { HealthResponse, PublicUser } from "./schemas";

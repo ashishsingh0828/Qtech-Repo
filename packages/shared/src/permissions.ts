@@ -29,6 +29,46 @@ export function hasCapability(role: Role, capability: Capability): boolean {
   return ROLE_CAPABILITIES[role].includes(capability);
 }
 
+export function capabilitiesForRole(role: Role): Capability[] {
+  return [...ROLE_CAPABILITIES[role]];
+}
+
+export type GroupPermission = {
+  view: boolean;
+  edit: boolean;
+};
+
+export type GroupAccessMap = Record<string, GroupPermission>;
+
+export type Permissions = {
+  capabilities: Capability[];
+  groupAccess: "all" | GroupAccessMap;
+};
+
+export function resolveGroupAccess(
+  role: Role,
+  rows: readonly { role: Role; groupKey: string; canView: boolean; canEdit: boolean }[],
+): Permissions["groupAccess"] {
+  if (role === "admin" || role === "manager") return "all";
+  const access: GroupAccessMap = {};
+  for (const row of rows) {
+    if (row.role !== role) continue;
+    const normalized = normalizeAccess(row.canView, row.canEdit);
+    access[row.groupKey] = { view: normalized.canView, edit: normalized.canEdit };
+  }
+  return access;
+}
+
+export function canViewGroup(groupAccess: Permissions["groupAccess"], groupKey: string): boolean {
+  if (groupAccess === "all") return true;
+  return groupAccess[groupKey]?.view === true;
+}
+
+export function canEditGroup(groupAccess: Permissions["groupAccess"], groupKey: string): boolean {
+  if (groupAccess === "all") return true;
+  return groupAccess[groupKey]?.edit === true;
+}
+
 export type ActionName = "validate" | "amc" | "pms" | "followup" | "calls" | "verify" | "assign";
 
 export type GroupEditCheck = (groupKey: string) => boolean;

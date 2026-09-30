@@ -20,3 +20,20 @@ export const healthResponseSchema = z.object({
 });
 
 export type HealthResponse = z.infer<typeof healthResponseSchema>;
+
+export const publicUserSchema = z.object({
+  id: z.uuid(),
+  name: z.string(),
+  email: z.string(),
+  role: roleSchema,
+  active: z.boolean(),
+  lastLoginAt: z.string().nullable(),
+  lastSeenAt: z.string().nullable(),
+  createdAt: z.string(),
+});
+
+export type PublicUser = z.infer<typeof publicUserSchema>;
+
+export const groupKeySchema = z.string().regex(/^[a-z0-9]+(?:_[a-z0-9]+)*$/);
+
+export const passwordSchema = z.string().min(8).max(200);

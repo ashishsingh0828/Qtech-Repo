@@ -60,7 +60,7 @@ export async function api<T>(path: string, request: ApiRequest = {}): Promise<T>
   });
 
   if (response.status === 401) {
-    window.dispatchEvent(new Event("unauthenticated"));
+    window.dispatchEvent(new CustomEvent("unauthenticated", { detail: { path } }));
   }
 
   const payload = await readBody(response);

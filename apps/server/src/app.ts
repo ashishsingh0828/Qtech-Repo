@@ -9,6 +9,9 @@ import { env } from "./env";
 import { logger } from "./lib/logger";
 import { errorHandler } from "./middleware/errorHandler";
 import { requestId } from "./middleware/requestId";
+import { accessRouter } from "./modules/access/routes";
+import { authRouter } from "./modules/auth/routes";
+import { usersRouter } from "./modules/users/routes";
 import { healthRouter } from "./routes/health";
 import { apiNotFound } from "./routes/notFound";
 
@@ -17,6 +20,7 @@ const webDist = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../.
 export function createApp() {
   const app = express();
   app.disable("x-powered-by");
+  app.set("trust proxy", 1);
   app.use(requestId);
   app.use(helmet());
   app.use(compression());
@@ -30,6 +34,9 @@ export function createApp() {
   );
 
   app.use("/api/health", healthRouter);
+  app.use("/api/auth", authRouter);
+  app.use("/api/users", usersRouter);
+  app.use("/api/access", accessRouter);
 
   if (env.NODE_ENV === "production") {
     app.use(express.static(webDist, { index: false }));

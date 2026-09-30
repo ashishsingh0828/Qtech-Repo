@@ -2,6 +2,7 @@ import { Prisma } from "@prisma/client";
 import { createApp } from "./app";
 import { env } from "./env";
 import { ensureDefaultGroupAccess } from "./lib/access";
+import { ensureBootstrapAdmin } from "./modules/auth/service";
 import { databaseAddress } from "./lib/databaseAddress";
 import { logger } from "./lib/logger";
 import { prisma } from "./lib/prisma";
@@ -25,6 +26,14 @@ async function main(): Promise<void> {
   } catch (error) {
     const code = error instanceof Prisma.PrismaClientKnownRequestError ? error.code : "unknown";
     logger.fatal(`Failed to ensure default group access (${code})`);
+    process.exit(1);
+  }
+
+  try {
+    await ensureBootstrapAdmin();
+  } catch (error) {
+    const code = error instanceof Prisma.PrismaClientKnownRequestError ? error.code : "unknown";
+    logger.fatal(`Failed to bootstrap admin (${code})`);
     process.exit(1);
   }
 
