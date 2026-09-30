@@ -19,6 +19,7 @@ import { AppError } from "../../lib/errors";
 import { publishEvent } from "../../lib/events";
 import { logger } from "../../lib/logger";
 import { prisma } from "../../lib/prisma";
+import { cancelOutbox, enqueueOutbox, enqueueOutboxNow } from "../notifications/outbox";
 import { syncMirrorFields, type MirrorExtras } from "../datasets/mirrors";
 
 type ActionName = "validate" | "verify" | "amc" | "pms" | "followup" | "assign" | "calls";
@@ -35,6 +36,15 @@ const ACTION_GROUP: Record<ActionName, string | null> = {
 
 export type ActionResult = { actionId: string; version: number };
 export type BulkResult = { results: Array<{ rowId: string; ok: boolean; error?: string; actionId?: string }> };
+
+type ActionNotice = {
+  validateResult?: "Yes" | "No" | "Clear";
+  reason?: string;
+  note?: string;
+  verifiedOk?: boolean;
+  amcAction?: string;
+  callEvent?: "opened" | "resolved";
+};
 
 export async function datasetSummary(actor: PublicUser, datasetId: string): Promise<{
   filters: Array<{ key: QuickFilterKey; label: string; count: number }>;
@@ -71,6 +81,7 @@ export async function runValidate(
   datasetId: string,
   rowId: string,
   input: { result: "Yes" | "No" | "Clear"; reason?: string; expectedDate?: string },
+  quiet = false,
 ): Promise<ActionResult> {
   return runAction(actor, datasetId, rowId, "validate", (data, schema) => {
     const verified = readText(data, schema, "verified");
@@ -100,7 +111,7 @@ export async function runValidate(
     }
     writeSemantic(data, schema, "rejection_reason", reason);
     writeSemantic(data, schema, "validation_due", input.expectedDate);
-  });
+  }, {}, undefined, { quiet, notice: { validateResult: input.result, reason: input.reason } });
 }
 
 export async function runVerify(
@@ -108,6 +119,7 @@ export async function runVerify(
   datasetId: string,
   rowId: string,
   input: { verified: boolean; note?: string },
+  quiet = false,
 ): Promise<ActionResult> {
   return runAction(actor, datasetId, rowId, "verify", (data, schema) => {
     if (readText(data, schema, "validated") !== "Yes") {
@@ -124,7 +136,7 @@ export async function runVerify(
     writeSemantic(data, schema, "verified", "Pending");
     writeSemantic(data, schema, "verified_by", null);
     writeSemantic(data, schema, "verified_at", null);
-  }, { note: input.note?.trim() ?? "" });
+  }, { note: input.note?.trim() ?? "" }, undefined, { quiet, notice: { verifiedOk: input.verified, note: input.note?.trim() } });
 }
 
 export async function runAmc(
@@ -163,7 +175,7 @@ export async function runAmc(
     }
     writeSemantic(data, schema, "ack_at", when);
     writeSemantic(data, schema, "ack_note", input.note?.trim() || null);
-  });
+  }, {}, undefined, { notice: { amcAction: input.action } });
 }
 
 export async function runPms(
@@ -208,13 +220,14 @@ export async function runAssign(
   datasetId: string,
   rowId: string,
   input: { validatorId?: string | null; serviceId?: string | null },
+  quiet = false,
 ): Promise<ActionResult> {
   if (actor.role !== "admin" && actor.role !== "manager") {
     throw new AppError("FORBIDDEN", 403, "Only a manager can assign rows.");
   }
   const validatorId = await activeRoleUser(input.validatorId, "validator");
   const serviceId = await activeRoleUser(input.serviceId, "service");
-  return runAction(actor, datasetId, rowId, "assign", () => undefined, {}, { validatorId, serviceId });
+  return runAction(actor, datasetId, rowId, "assign", () => undefined, {}, { validatorId, serviceId }, { quiet });
 }
 
 export async function logCall(
@@ -238,7 +251,7 @@ export async function logCall(
       },
     });
     return { undo: "delete-call", callId: call.id };
-  }, "call.logged");
+  }, "call.logged", { callEvent: "opened" });
 }
 
 export async function resolveCall(
@@ -257,7 +270,7 @@ export async function resolveCall(
       data: { status: "Resolved", resolvedAt: new Date(), resolvedById: actor.id, note: note?.trim() || null },
     });
     return { undo: "reopen-call", callId: call.id };
-  }, "call.resolved");
+  }, "call.resolved", { callEvent: "resolved" });
 }
 
 export async function listCalls(actor: PublicUser, datasetId: string, rowId: string): Promise<Array<{
@@ -372,6 +385,7 @@ export async function undoAction(actor: PublicUser, datasetId: string, rowId: st
         meta: { undoneActionId: actionId, version },
       },
     });
+    await cancelOutbox(tx, actionId);
   });
   emit(actor, datasetId, rowId, action, "action.undone");
   return { actionId: action, version };
@@ -402,11 +416,28 @@ export async function closeHistorical(actor: PublicUser, datasetId: string, rowI
           closed += 1;
         }
         if (closed === 0) throw new AppError("CONFLICT", 409, "No past PMS entries to close.");
-      }, { historical: true });
+      }, { historical: true }, undefined, { quiet: true });
       results.push({ rowId, ok: true, actionId: result.actionId });
     } catch (error) {
       if (error instanceof AppError) results.push({ rowId, ok: false, error: error.message });
       else throw error;
+    }
+  }
+  const saved = results.filter((item) => item.ok).length;
+  if (saved > 0) {
+    try {
+      await enqueueOutboxNow({
+        kind: "bulk",
+        action: "pms",
+        count: saved,
+        datasetId,
+        actorId: actor.id,
+        actorName: actor.name,
+        actorRole: actor.role,
+        summary: `${saved} historical PMS ${saved === 1 ? "row" : "rows"} closed`,
+      });
+    } catch (error) {
+      logger.error({ err: error }, "Failed to enqueue bulk notification");
     }
   }
   return { results };
@@ -418,7 +449,9 @@ export async function bulkValidate(
   rowIds: string[],
   input: { result: "Yes" | "No" | "Clear"; reason?: string; expectedDate?: string },
 ): Promise<BulkResult> {
-  return bulk(rowIds, (rowId) => runValidate(actor, datasetId, rowId, input));
+  const result = await bulk(rowIds, (rowId) => runValidate(actor, datasetId, rowId, input, true));
+  await enqueueBulk(actor, datasetId, "validate", result, "validated");
+  return result;
 }
 
 export async function bulkVerify(
@@ -427,7 +460,9 @@ export async function bulkVerify(
   rowIds: string[],
   input: { verified: boolean; note?: string },
 ): Promise<BulkResult> {
-  return bulk(rowIds, (rowId) => runVerify(actor, datasetId, rowId, input));
+  const result = await bulk(rowIds, (rowId) => runVerify(actor, datasetId, rowId, input, true));
+  await enqueueBulk(actor, datasetId, "verify", result, "verified");
+  return result;
 }
 
 export async function bulkAssign(
@@ -436,7 +471,37 @@ export async function bulkAssign(
   rowIds: string[],
   input: { validatorId?: string | null; serviceId?: string | null },
 ): Promise<BulkResult> {
-  return bulk(rowIds, (rowId) => runAssign(actor, datasetId, rowId, input));
+  const result = await bulk(rowIds, (rowId) => runAssign(actor, datasetId, rowId, input, true));
+  await enqueueBulk(actor, datasetId, "assign", result, "assigned", input);
+  return result;
+}
+
+async function enqueueBulk(
+  actor: PublicUser,
+  datasetId: string,
+  action: string,
+  result: BulkResult,
+  verb: string,
+  assignment?: { validatorId?: string | null; serviceId?: string | null },
+): Promise<void> {
+  const count = result.results.filter((item) => item.ok).length;
+  if (count === 0) return;
+  try {
+    await enqueueOutboxNow({
+      kind: "bulk",
+      action,
+      count,
+      datasetId,
+      actorId: actor.id,
+      actorName: actor.name,
+      actorRole: actor.role,
+      summary: `${count} ${count === 1 ? "row" : "rows"} ${verb}`,
+      newValidatorId: assignment?.validatorId,
+      newServiceId: assignment?.serviceId,
+    });
+  } catch (error) {
+    logger.error({ err: error }, "Failed to enqueue bulk notification");
+  }
 }
 
 async function bulk(rowIds: string[], run: (rowId: string) => Promise<ActionResult>): Promise<BulkResult> {
@@ -461,6 +526,7 @@ async function runAction(
   mutate: (data: Record<string, unknown>, schema: DatasetSchema) => void,
   meta: Record<string, unknown> = {},
   assignment?: { validatorId?: string | null; serviceId?: string | null },
+  options?: { quiet?: boolean; notice?: ActionNotice },
 ): Promise<ActionResult> {
   const permissions = await permissionsFor(actor.role);
   assertCapability(actor, permissions, action);
@@ -514,6 +580,33 @@ async function runAction(
         meta: { ...meta, version } as Prisma.InputJsonValue,
       })),
     });
+    if (!options?.quiet) {
+      await enqueueOutbox(
+        tx,
+        {
+          kind: "row.action",
+          datasetId,
+          rowId,
+          actorId: actor.id,
+          actorName: actor.name,
+          actorRole: actor.role,
+          action,
+          fields: logs.flatMap((log) => {
+            if (!log.key) return [];
+            const column = schema.columns.find((item) => item.key === log.key);
+            return [{ key: log.key, groupKey: log.groupKey, label: column?.label ?? log.key }];
+          }),
+          validateResult: options?.notice?.validateResult,
+          reason: options?.notice?.reason,
+          note: options?.notice?.note,
+          verifiedOk: options?.notice?.verifiedOk,
+          amcAction: options?.notice?.amcAction,
+          newValidatorId: assignment?.validatorId,
+          newServiceId: assignment?.serviceId,
+        },
+        { actionId, delay: true },
+      );
+    }
   });
   emit(actor, datasetId, rowId, actionId, `action.${action}`);
   return { actionId, version };
@@ -525,6 +618,7 @@ async function mutateCalls(
   rowId: string,
   change: (tx: Prisma.TransactionClient, row: { id: string; version: number; data: Prisma.JsonValue }) => Promise<Record<string, unknown>>,
   action: string,
+  notice?: ActionNotice,
 ): Promise<ActionResult> {
   const actionId = randomUUID();
   let version = 0;
@@ -559,6 +653,21 @@ async function mutateCalls(
         meta: { ...extraMeta, version } as Prisma.InputJsonValue,
       },
     });
+    await enqueueOutbox(
+      tx,
+      {
+        kind: "row.action",
+        datasetId,
+        rowId,
+        actorId: actor.id,
+        actorName: actor.name,
+        actorRole: actor.role,
+        action,
+        callEvent: notice?.callEvent,
+        fields: [],
+      },
+      { actionId, delay: true },
+    );
   });
   emit(actor, datasetId, rowId, actionId, action);
   return { actionId, version };

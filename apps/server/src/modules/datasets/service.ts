@@ -7,6 +7,7 @@ import { AppError } from "../../lib/errors";
 import { publishEvent } from "../../lib/events";
 import { logger } from "../../lib/logger";
 import { prisma } from "../../lib/prisma";
+import { enqueueOutbox } from "../notifications/outbox";
 import { buildExportWorkbook } from "./export";
 import { syncMirrorFields } from "./mirrors";
 import { parseWorkbook } from "./parse";
@@ -97,6 +98,21 @@ export async function importDataset(actor: PublicUser, file: { originalname: str
           },
         },
       });
+      await enqueueOutbox(
+        tx,
+        {
+          kind: "import",
+          datasetId,
+          datasetName: name,
+          actorId: actor.id,
+          actorName: actor.name,
+          actorRole: actor.role,
+          audience: "all",
+          newRows: parsed.rows.length,
+          updatedRows: 0,
+        },
+        { actionId },
+      );
     },
     { timeout: 120_000, maxWait: 10_000 },
   );

@@ -116,12 +116,26 @@ body {
   animation: cell-flash var(--motion) ease;
 }
 
+.cell-pulse {
+  animation: cell-pulse 1s ease 3;
+}
+
 @keyframes cell-flash {
   from {
     background-color: var(--gold-soft);
   }
   to {
     background-color: transparent;
+  }
+}
+
+@keyframes cell-pulse {
+  0%,
+  100% {
+    background-color: transparent;
+  }
+  50% {
+    background-color: var(--gold-soft);
   }
 }
 

@@ -26,6 +26,8 @@ import { Prisma } from "@prisma/client";
 import { permissionsFor } from "../../lib/account";
 import { AppError } from "../../lib/errors";
 import { publishEvent } from "../../lib/events";
+import { enqueueOutbox } from "../notifications/outbox";
+import { structurePhrase } from "../notifications/payload";
 import { logger } from "../../lib/logger";
 import { prisma } from "../../lib/prisma";
 import { env } from "../../env";
@@ -156,6 +158,23 @@ export async function updateRow(
         toValue: jsonInput(change.to),
       })),
     });
+    await enqueueOutbox(
+      tx,
+      {
+        kind: "cell.updated",
+        datasetId,
+        rowId: row.id,
+        actorId: actor.id,
+        actorName: actor.name,
+        actorRole: actor.role,
+        fields: changed.map((change) => ({
+          key: change.key,
+          groupKey: change.groupKey,
+          label: schema.columns.find((column) => column.key === change.key)?.label ?? change.key,
+        })),
+      },
+      { actionId, delay: true },
+    );
     return { projection: toProjection(saved, projected.columns, schema), wrote: true };
   });
   if ("wrote" in updated && updated.wrote) {
@@ -202,6 +221,7 @@ export async function createRow(
           actionId,
         },
       });
+      await enqueueOutbox(tx, rowNotice(actor, datasetId, row.id, "row.created"), { actionId });
       const rowCount = await tx.row.count({ where: { datasetId, deletedAt: null } });
       await tx.dataset.update({ where: { id: datasetId }, data: { rowCount } });
       return { row, rowCount };
@@ -251,6 +271,7 @@ export async function duplicateRow(
           meta: { sourceRowId: source.id },
         },
       });
+      await enqueueOutbox(tx, rowNotice(actor, datasetId, row.id, "row.duplicated"), { actionId });
       const rowCount = await tx.row.count({ where: { datasetId, deletedAt: null } });
       await tx.dataset.update({ where: { id: datasetId }, data: { rowCount } });
       return { row, rowCount };
@@ -282,6 +303,7 @@ export async function deleteRow(actor: PublicUser, datasetId: string, rowId: str
         actionId,
       },
     });
+    await enqueueOutbox(tx, rowNotice(actor, datasetId, row.id, "row.deleted"), { actionId });
     const count = await tx.row.count({ where: { datasetId, deletedAt: null } });
     await tx.dataset.update({ where: { id: datasetId }, data: { rowCount: count } });
     return count;
@@ -315,6 +337,7 @@ export async function restoreRow(
         actionId,
       },
     });
+    await enqueueOutbox(tx, rowNotice(actor, datasetId, row.id, "row.restored"), { actionId });
     const rowCount = await tx.row.count({ where: { datasetId, deletedAt: null } });
     await tx.dataset.update({ where: { id: datasetId }, data: { rowCount } });
     return { row: saved, rowCount };
@@ -583,6 +606,20 @@ async function resolvePosition(
     select: { position: true },
   });
   return (last?.position ?? 0) + 1;
+}
+
+function rowNotice(actor: PublicUser, datasetId: string, rowId: string, action: string) {
+  return {
+    kind: "structure",
+    action,
+    datasetId,
+    rowId,
+    actorId: actor.id,
+    actorName: actor.name,
+    actorRole: actor.role,
+    audience: "managers" as const,
+    summary: structurePhrase(action),
+  };
 }
 
 function emit(event: { type: string; datasetId: string; rowId: string; actorId: string; actionId: string }): void {

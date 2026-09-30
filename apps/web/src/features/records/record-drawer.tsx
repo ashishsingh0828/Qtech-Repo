@@ -65,6 +65,8 @@ export function RecordDrawer({
   groupAccess,
   countryCode,
   focusGroupKey,
+  focusKeys,
+  revision,
   onOpenChange,
 }: {
   datasetId: string;
@@ -74,6 +76,8 @@ export function RecordDrawer({
   groupAccess: "all" | Record<string, { view: boolean; edit: boolean }>;
   countryCode: string;
   focusGroupKey: string;
+  focusKeys: string[];
+  revision: number;
   onOpenChange: (open: boolean) => void;
 }) {
   const [calls, setCalls] = useState<CallItem[]>([]);
@@ -118,7 +122,7 @@ export function RecordDrawer({
     return () => {
       cancelled = true;
     };
-  }, [canCalls, datasetId, row]);
+  }, [canCalls, datasetId, revision, row]);
 
   const customer = textOf(row, schema.columns, "customer_name");
   const serial = textOf(row, schema.columns, "serial");
@@ -185,6 +189,11 @@ export function RecordDrawer({
       <SheetContent className="md:w-[480px]">
         {row ? (
           <div className="flex min-h-0 flex-1 flex-col overflow-auto">
+            {focusKeys.length > 0 ? (
+              <div className="sticky top-0 z-10 border-b border-hairline bg-gold-soft px-5 py-2 text-sm text-ink">
+                Edited fields: {editedLabels(schema, focusKeys, groupAccess)}
+              </div>
+            ) : null}
             <SheetHeader>
               <SheetTitle className="truncate font-serif text-[28px] leading-tight">{customer || "Record"}</SheetTitle>
               <SheetDescription className="truncate">
@@ -669,6 +678,21 @@ function warrantyTone(status: string): PillTone {
   if (status === "Expiring") return "amber";
   if (status === "Expired") return "ruby";
   return "stone";
+}
+
+function editedLabels(
+  schema: DatasetSchema,
+  keys: string[],
+  groupAccess: "all" | Record<string, { view: boolean; edit: boolean }>,
+): string {
+  const labels = keys.flatMap((key) => {
+    const column = schema.columns.find((item) => item.key === key);
+    if (!column) return [];
+    const group = schema.groups.find((item) => item.id === column.groupId);
+    if (group && !canViewGroup(groupAccess, group.groupKey)) return [];
+    return [column.label];
+  });
+  return labels.join(", ") || "updated a record";
 }
 
 function pmsTone(status: PmsEntryStatus): PillTone {

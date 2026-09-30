@@ -187,17 +187,22 @@ model OutboxEvent {
   runAt       DateTime  @db.Timestamptz(3)
   processedAt DateTime? @db.Timestamptz(3)
   cancelledAt DateTime? @db.Timestamptz(3)
+  attempts    Int       @default(0)
+  failedAt    DateTime? @db.Timestamptz(3)
+  lastError   String?
   createdAt   DateTime  @default(now()) @db.Timestamptz(3)
 
   @@index([processedAt, cancelledAt, runAt])
 }
 
 model JobRun {
-  id        String   @id @default(uuid())
-  jobName   String
-  runDate   DateTime @db.Date
-  scope     String
-  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  id          String    @id @default(uuid())
+  jobName     String
+  runDate     DateTime  @db.Date
+  scope       String
+  status      String    @default("running")
+  completedAt DateTime? @db.Timestamptz(3)
+  createdAt   DateTime  @default(now()) @db.Timestamptz(3)
 
   @@unique([jobName, runDate, scope])
 }

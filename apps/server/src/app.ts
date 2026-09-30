@@ -12,6 +12,8 @@ import { requestId } from "./middleware/requestId";
 import { accessRouter } from "./modules/access/routes";
 import { authRouter } from "./modules/auth/routes";
 import { datasetsRouter } from "./modules/datasets/routes";
+import { eventsRouter } from "./modules/events/routes";
+import { notificationsRouter } from "./modules/notifications/routes";
 import { trashRouter } from "./modules/trash/routes";
 import { usersRouter } from "./modules/users/routes";
 import { healthRouter } from "./routes/health";
@@ -25,7 +27,14 @@ export function createApp() {
   app.set("trust proxy", 1);
   app.use(requestId);
   app.use(helmet());
-  app.use(compression());
+  app.use(
+    compression({
+      filter(req, res) {
+        if (req.path.startsWith("/api/events")) return false;
+        return compression.filter(req, res);
+      },
+    }),
+  );
   app.use(express.json({ limit: "1mb" }));
   app.use(cookieParser());
   app.use(
@@ -36,6 +45,8 @@ export function createApp() {
   );
 
   app.use("/api/health", healthRouter);
+  app.use("/api/events", eventsRouter);
+  app.use("/api/notifications", notificationsRouter);
   app.use("/api/auth", authRouter);
   app.use("/api/users", usersRouter);
   app.use("/api/datasets", datasetsRouter);

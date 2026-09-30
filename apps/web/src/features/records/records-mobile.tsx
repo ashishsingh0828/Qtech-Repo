@@ -1,6 +1,6 @@
 import type { DatasetColumn, RowProjection } from "@app/shared";
 import { formatDistanceToNow } from "date-fns";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Button,
   Sheet,
@@ -26,6 +26,8 @@ export function MobileCards({
   onSave,
   saving,
   onOpen,
+  scrollRowId,
+  pulseKeys,
 }: {
   rows: RowProjection[];
   pinned: DatasetColumn[];
@@ -37,9 +39,15 @@ export function MobileCards({
   onSave: (row: RowProjection, changes: Record<string, string | null>) => Promise<boolean>;
   saving: boolean;
   onOpen?: (row: RowProjection) => void;
+  scrollRowId?: string | null;
+  pulseKeys?: readonly string[];
 }) {
   const [editing, setEditing] = useState<RowProjection | null>(null);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
+  useEffect(() => {
+    if (!scrollRowId) return;
+    document.getElementById(`record-row-${scrollRowId}`)?.scrollIntoView({ block: "center" });
+  }, [rows, scrollRowId]);
   const fields = [...pinned, ...groupColumns.filter((column) => !pinned.some((item) => item.key === column.key))];
   const editable = groupColumns.filter(canEditColumn);
 
@@ -61,7 +69,11 @@ export function MobileCards({
         return (
           <article
             key={row.id}
-            className="flex min-w-0 flex-col gap-2 rounded-card border border-hairline bg-surface p-5"
+            id={`record-row-${row.id}`}
+            className={cn(
+              "flex min-w-0 flex-col gap-2 rounded-card border border-hairline bg-surface p-5",
+              scrollRowId === row.id && pulseKeys && pulseKeys.length > 0 && "cell-pulse",
+            )}
             onClick={() => onOpen?.(row)}
           >
             <div className="flex items-center justify-between gap-2">

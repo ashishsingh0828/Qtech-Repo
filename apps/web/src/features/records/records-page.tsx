@@ -13,7 +13,7 @@ import { useQuery } from "@tanstack/react-query";
 import { formatDistanceToNow } from "date-fns";
 import { Lock } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import {
   Badge,
@@ -47,6 +47,7 @@ import { ApiError, api } from "../../lib/api";
 import { errorText, isUnauthenticated } from "../../lib/errors";
 import { queryClient } from "../../lib/query";
 import { useAuth } from "../auth/auth-gate";
+import { useRealtime } from "../realtime/realtime";
 import { downloadWorkbook } from "./download";
 import { MobileCards } from "./records-mobile";
 import { CellMenuHost, RecordsGrid } from "./records-grid";
@@ -69,6 +70,12 @@ type ConflictState = EditorState & { byName: string; version: number };
 
 export function RecordsPage() {
   const { datasetId = "" } = useParams();
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const { revision, deletedName, dismissDeleted } = useRealtime();
+  const linkRow = searchParams.get("row") ?? "";
+  const linkFocus = searchParams.get("focus") ?? "";
+  const linkHandled = useRef("");
   const { user, permissions, countryCode } = useAuth();
   const searchRef = useRef<HTMLInputElement>(null);
   const [groupId, setGroupId] = useState("");
@@ -94,9 +101,12 @@ export function RecordsPage() {
   const [bannerDismissed, setBannerDismissed] = useState(false);
   const [insertAt, setInsertAt] = useState<{ column: DatasetColumn; side: "left" | "right" } | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<DatasetColumn | null>(null);
-  const [tab, setTab] = useState("");
+  const [tab, setTab] = useState(() => searchParams.get("tab") ?? "");
   const [drawerId, setDrawerId] = useState<string | null>(null);
   const [drawerFocus, setDrawerFocus] = useState("");
+  const [editedKeys, setEditedKeys] = useState<string[]>([]);
+  const [scrollRowId, setScrollRowId] = useState<string | null>(null);
+  const [pulse, setPulse] = useState(false);
   const [assignOpen, setAssignOpen] = useState(false);
   const [validatorId, setValidatorId] = useState("");
   const [serviceId, setServiceId] = useState("");
@@ -130,6 +140,39 @@ export function RecordsPage() {
   useEffect(() => {
     rememberDataset(user.id, datasetId);
   }, [user.id, datasetId]);
+
+  function chooseTab(next: string) {
+    setTab(next);
+    const params = new URLSearchParams(searchParams);
+    if (next) params.set("tab", next);
+    else params.delete("tab");
+    setSearchParams(params, { replace: true });
+  }
+
+  useEffect(() => {
+    setTab(searchParams.get("tab") ?? "");
+  }, [searchParams]);
+
+  useEffect(() => {
+    if (!linkRow) return;
+    const token = `${linkRow}|${linkFocus}`;
+    if (linkHandled.current === token) return;
+    linkHandled.current = token;
+    setSearch("");
+    setRecentOnly(false);
+    setFilters({});
+    setDrawerId(linkRow);
+    setEditedKeys(linkFocus.split(",").map((key) => key.trim()).filter(Boolean));
+    setScrollRowId(linkRow);
+    setPulse(true);
+    const timer = window.setTimeout(() => setPulse(false), 3000);
+    return () => window.clearTimeout(timer);
+  }, [linkFocus, linkRow]);
+
+  useEffect(() => {
+    if (!linkRow || rowsQuery.isFetching || sourceRows.some((row) => row.id === linkRow) || !tab) return;
+    chooseTab("");
+  }, [linkRow, rowsQuery.isFetching, sourceRows, tab]);
 
   useEffect(() => {
     if (!detail) return;
@@ -328,11 +371,35 @@ export function RecordsPage() {
 
   if (datasetQuery.isPending || rowsQuery.isPending) return <RecordsSkeleton />;
   if (datasetQuery.isError || rowsQuery.isError || !detail) {
+    const removedBy = deletedName(datasetId);
     return (
       <div className="flex flex-col gap-6">
         <PageHeader title="Records" subtitle="Imported rows." />
+        {removedBy ? (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-card border border-hairline bg-gold-soft px-4 py-3">
+            <p className="text-sm text-ink">This dataset was deleted by {removedBy}</p>
+            <div className="flex gap-2">
+              <Button variant="secondary" onClick={() => navigate("/records")}>Back</Button>
+              {canRestore ? (
+                <Button
+                  onClick={() => {
+                    void api("/api/trash/restore", { method: "POST", body: { kind: "datasets", ids: [datasetId] } })
+                      .then(async () => {
+                        dismissDeleted(datasetId);
+                        await queryClient.invalidateQueries({ queryKey: ["dataset", datasetId] });
+                        toast.success("Dataset restored.");
+                      })
+                      .catch((error: unknown) => toast.error(errorText(error, "Could not restore the dataset.")));
+                  }}
+                >
+                  Restore
+                </Button>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
         <div className="rounded-card border border-hairline bg-surface p-6">
-          <p className="text-sm text-ink-2">Could not load this dataset.</p>
+          <p className="text-sm text-ink-2">{removedBy ? "This dataset is in Trash." : "Could not load this dataset."}</p>
           <Button
             className="mt-4"
             onClick={() => {
@@ -356,6 +423,29 @@ export function RecordsPage() {
 
   return (
     <div className="flex h-[calc(100dvh-var(--topbar-h)-6rem)] min-h-0 min-w-0 flex-col gap-3 md:h-[calc(100dvh-var(--topbar-h)-3rem)] xl:h-[calc(100dvh-var(--topbar-h)-4rem)]">
+      {deletedName(datasetId) ? (
+        <div className="fixed inset-x-0 top-[var(--topbar-h)] z-popover flex flex-wrap items-center justify-between gap-3 border-b border-hairline bg-gold-soft px-4 py-3">
+          <p className="text-sm text-ink">This dataset was deleted by {deletedName(datasetId)}</p>
+          <div className="flex gap-2">
+            <Button variant="secondary" onClick={() => navigate("/records")}>Back</Button>
+            {canRestore ? (
+              <Button
+                onClick={() => {
+                  void api("/api/trash/restore", { method: "POST", body: { kind: "datasets", ids: [datasetId] } })
+                    .then(async () => {
+                      dismissDeleted(datasetId);
+                      await queryClient.invalidateQueries({ queryKey: ["dataset", datasetId] });
+                      toast.success("Dataset restored.");
+                    })
+                    .catch((error: unknown) => toast.error(errorText(error, "Could not restore the dataset.")));
+                }}
+              >
+                Restore
+              </Button>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
       <PageHeader
         title={detail.name}
         subtitle="Records"
@@ -401,7 +491,7 @@ export function RecordsPage() {
         <button
           type="button"
           className={`min-h-11 shrink-0 border-b-2 px-3 text-sm ${tab === "" ? "border-gold text-ink" : "border-transparent text-ink-2"}`}
-          onClick={() => setTab("")}
+          onClick={() => chooseTab("")}
         >
           All
         </button>
@@ -410,7 +500,7 @@ export function RecordsPage() {
             key={filter.key}
             type="button"
             className={`inline-flex min-h-11 shrink-0 items-center gap-2 border-b-2 px-3 text-sm ${tab === filter.key ? "border-gold text-ink" : "border-transparent text-ink-2"}`}
-            onClick={() => setTab((current) => (current === filter.key ? "" : filter.key))}
+            onClick={() => chooseTab(tab === filter.key ? "" : filter.key)}
           >
             {filter.label}
             <Badge>{filter.count}</Badge>
@@ -568,6 +658,8 @@ export function RecordsPage() {
               activeCell={active}
               editor={editor}
               flashKey={flash}
+              scrollRowId={scrollRowId}
+              pulseKeys={pulse ? editedKeys : []}
               recent={recent}
               filters={filters}
               sort={sort}
@@ -657,6 +749,7 @@ export function RecordsPage() {
               onDeleteColumn={setDeleteTarget}
               onOpenRow={(row) => {
                 setDrawerFocus("");
+                setEditedKeys([]);
                 setDrawerId(row.id);
               }}
               onWorkflow={(row) => {
@@ -684,8 +777,11 @@ export function RecordsPage() {
             onSave={(row, changes) => saveChanges(row, changes, row.version)}
             onOpen={(row) => {
               setDrawerFocus("");
+              setEditedKeys([]);
               setDrawerId(row.id);
             }}
+            scrollRowId={scrollRowId}
+            pulseKeys={pulse ? editedKeys : []}
           />
           <div className="flex min-w-0 flex-wrap items-center justify-between gap-2 text-sm text-ink-2">
             <p className="tabular-nums">
@@ -748,8 +844,18 @@ export function RecordsPage() {
         groupAccess={permissions.groupAccess}
         countryCode={countryCode ?? "+91"}
         focusGroupKey={drawerFocus}
+        focusKeys={editedKeys}
+        revision={revision}
         onOpenChange={(open) => {
-          if (!open) setDrawerId(null);
+          if (!open) {
+            setDrawerId(null);
+            setEditedKeys([]);
+            const next = new URLSearchParams(searchParams);
+            next.delete("row");
+            next.delete("focus");
+            setSearchParams(next, { replace: true });
+            linkHandled.current = "";
+          }
         }}
       />
       <Dialog open={assignOpen} onOpenChange={setAssignOpen}>

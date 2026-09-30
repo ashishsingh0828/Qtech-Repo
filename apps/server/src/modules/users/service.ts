@@ -2,9 +2,12 @@ import type { PublicUser, Role } from "@app/shared";
 import { Prisma, Role as PrismaRole } from "@prisma/client";
 import { toPrismaRole, toPublicUser, toSharedRole } from "../../lib/account";
 import { AppError } from "../../lib/errors";
+import { publishEvent } from "../../lib/events";
+import { logger } from "../../lib/logger";
 import { hashPassword } from "../../lib/password";
 import { prisma } from "../../lib/prisma";
 import { deleteUserSessions } from "../../lib/session";
+import { closeUserStreams } from "../events/registry";
 
 const EMAIL_CONFLICT = "A user with this email already exists.";
 
@@ -53,7 +56,9 @@ export async function updateUser(
   userId: string,
   input: { name?: string; role?: Role; active?: boolean },
 ): Promise<PublicUser> {
-  return prisma.$transaction(async (tx) => {
+  let roleChanged = false;
+  let deactivating = false;
+  const updated = await prisma.$transaction(async (tx) => {
     const target = await tx.user.findUnique({ where: { id: userId } });
     if (!target) {
       throw new AppError("NOT_FOUND", 404, "User not found.");
@@ -62,8 +67,8 @@ export async function updateUser(
     const currentRole = toSharedRole(target.role);
     const nextRole = input.role ?? currentRole;
     const nextActive = input.active ?? target.active;
-    const roleChanged = input.role !== undefined && input.role !== currentRole;
-    const deactivating = input.active === false && target.active;
+    roleChanged = input.role !== undefined && input.role !== currentRole;
+    deactivating = input.active === false && target.active;
     const removesActiveAdmin =
       target.role === PrismaRole.admin && target.active && (nextRole !== "admin" || !nextActive);
 
@@ -105,6 +110,15 @@ export async function updateUser(
     }
     return toPublicUser(updated);
   });
+  if (deactivating) closeUserStreams(userId);
+  if (deactivating || roleChanged) {
+    try {
+      publishEvent({ type: "access.changed", actorId, userId });
+    } catch (error) {
+      logger.error({ err: error }, "Failed to publish access.changed");
+    }
+  }
+  return updated;
 }
 
 export async function resetUserPassword(userId: string, password: string): Promise<void> {

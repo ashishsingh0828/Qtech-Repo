@@ -12,6 +12,7 @@ import { AppError } from "../../lib/errors";
 import { publishEvent } from "../../lib/events";
 import { logger } from "../../lib/logger";
 import { prisma } from "../../lib/prisma";
+import { enqueueOutbox } from "../notifications/outbox";
 import type { AccessRowInput } from "./schema";
 
 export type AccessGroup = {
@@ -146,6 +147,21 @@ export async function replaceAccess(actor: PublicUser, input: AccessRowInput[]):
         })) as Prisma.InputJsonValue,
       },
     });
+    const roles = changedRoles(previous, normalized);
+    if (roles.length > 0) {
+      await enqueueOutbox(
+        tx,
+        {
+          kind: "access.changed",
+          actorId: actor.id,
+          actorName: actor.name,
+          actorRole: actor.role,
+          roles,
+          summary: "Your access was updated",
+        },
+        { actionId },
+      );
+    }
   });
 
   try {
@@ -155,6 +171,23 @@ export async function replaceAccess(actor: PublicUser, input: AccessRowInput[]):
   }
 
   return getAccessMatrix();
+}
+
+function changedRoles(
+  previous: Array<{ role: string; groupKey: string; canView: boolean; canEdit: boolean }>,
+  next: Array<{ role: string; groupKey: string; canView: boolean; canEdit: boolean }>,
+): string[] {
+  const before = new Map(previous.map((row) => [`${row.role}\u0000${row.groupKey}`, row]));
+  const after = new Map(next.map((row) => [`${row.role}\u0000${row.groupKey}`, row]));
+  const roles = new Set<string>();
+  for (const key of new Set([...before.keys(), ...after.keys()])) {
+    const left = before.get(key);
+    const right = after.get(key);
+    if (left && right && left.canView === right.canView && left.canEdit === right.canEdit) continue;
+    const role = right?.role ?? left?.role;
+    if (role) roles.add(role);
+  }
+  return [...roles];
 }
 
 function walkSchema(value: unknown, visit: (groupKey: string, label: string | undefined) => void): void {

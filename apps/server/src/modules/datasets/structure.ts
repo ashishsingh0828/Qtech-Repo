@@ -14,6 +14,8 @@ import { AppError } from "../../lib/errors";
 import { publishEvent } from "../../lib/events";
 import { logger } from "../../lib/logger";
 import { prisma } from "../../lib/prisma";
+import { enqueueOutbox } from "../notifications/outbox";
+import { structurePhrase, type OutboxBody } from "../notifications/payload";
 import { syncMirrorFields } from "./mirrors";
 import { applySystemColumns } from "./systemColumns";
 
@@ -107,6 +109,7 @@ export async function updateColumn(
       const next = applySystemColumns(reindex(current));
       await saveSchema(tx, datasetId, next);
       await writeActivity(tx, actor, datasetId, actionId, "column.updated", { key });
+      await enqueueOutbox(tx, structureBody(actor, datasetId, "column.updated"), { actionId });
       return next;
     },
     { timeout: 120_000 },
@@ -257,11 +260,13 @@ export async function softDeleteDataset(actor: PublicUser, datasetId: string): P
   const actionId = randomUUID();
   await prisma.$transaction(async (tx) => {
     await lockDataset(tx, datasetId);
+    const current = await tx.dataset.findUnique({ where: { id: datasetId }, select: { name: true } });
     await tx.dataset.update({
       where: { id: datasetId },
       data: { deletedAt: new Date(), deletedById: actor.id },
     });
     await writeActivity(tx, actor, datasetId, actionId, "dataset.deleted", {});
+    await enqueueOutbox(tx, structureBody(actor, datasetId, "dataset.deleted", current?.name), { actionId });
   });
   emit(actor, datasetId, actionId, "dataset.deleted");
 }
@@ -278,6 +283,7 @@ async function changeSchema(
     const next = applySystemColumns(reindex(mutate(current)));
     await saveSchema(tx, datasetId, next);
     await writeActivity(tx, actor, datasetId, actionId, action, {});
+    await enqueueOutbox(tx, structureBody(actor, datasetId, action), { actionId });
     return next;
   });
   emit(actor, datasetId, actionId, action);
@@ -510,9 +516,24 @@ async function writeActivity(
   });
 }
 
+function structureBody(actor: PublicUser, datasetId: string, action: string, datasetName?: string): OutboxBody {
+  const datasetLevel = action.startsWith("dataset.");
+  return {
+    kind: datasetLevel ? action : "structure",
+    action,
+    datasetId,
+    datasetName,
+    actorId: actor.id,
+    actorName: actor.name,
+    actorRole: actor.role,
+    audience: datasetLevel ? "all" : "managers",
+    summary: structurePhrase(action, datasetName),
+  };
+}
+
 function emit(actor: PublicUser, datasetId: string, actionId: string, type: string): void {
   try {
-    publishEvent({ type, datasetId, actorId: actor.id, actionId });
+    publishEvent({ type, datasetId, actorId: actor.id, actorName: actor.name, actionId });
   } catch (error) {
     logger.error({ err: error }, `Failed to publish ${type}`);
   }

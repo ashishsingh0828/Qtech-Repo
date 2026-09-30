@@ -4,6 +4,7 @@ import { cleanLabel, isServerManagedField, normalizeGroupKey, parseDatasetSchema
 import { Prisma } from "@prisma/client";
 import { AppError } from "../../lib/errors";
 import { publishEvent } from "../../lib/events";
+import { enqueueOutbox } from "../notifications/outbox";
 import { logger } from "../../lib/logger";
 import { prisma } from "../../lib/prisma";
 import { syncMirrorFields } from "./mirrors";
@@ -84,7 +85,7 @@ export async function confirmMerge(actor: PublicUser, datasetId: string, token: 
   await prisma.$transaction(
     async (tx) => {
       await lockDataset(tx, datasetId);
-      const dataset = await tx.dataset.findUnique({ where: { id: datasetId }, select: { schema: true } });
+      const dataset = await tx.dataset.findUnique({ where: { id: datasetId }, select: { schema: true, name: true } });
       const parsedSchema = parseDatasetSchema(dataset?.schema);
       if (!parsedSchema) throw new AppError("INTERNAL", 500, "Dataset schema is invalid.");
       const schema = applySystemColumns(parsedSchema);
@@ -191,6 +192,21 @@ export async function confirmMerge(actor: PublicUser, datasetId: string, token: 
           },
         },
       });
+      await enqueueOutbox(
+        tx,
+        {
+          kind: "import",
+          datasetId,
+          datasetName: dataset?.name ?? "Dataset",
+          actorId: actor.id,
+          actorName: actor.name,
+          actorRole: actor.role,
+          audience: "all",
+          newRows: plan.preview.newRows,
+          updatedRows: plan.preview.updatedRows,
+        },
+        { actionId },
+      );
     },
     { timeout: 120_000 },
   );

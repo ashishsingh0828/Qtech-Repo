@@ -14,7 +14,9 @@ import { cn } from "../../lib/utils";
 import { useAuth } from "../auth/auth-gate";
 import { ChangePasswordDialog } from "../auth/change-password-dialog";
 import { endSession } from "../auth/session";
+import { NotificationBell } from "../notifications/bell";
 import { DatasetSwitcher } from "../records/dataset-switcher";
+import { LiveStatus, RealtimeProvider } from "../realtime/realtime";
 
 const ICONS: Record<NavIcon, ComponentType<{ className?: string; strokeWidth?: number }>> = {
   rows: Rows3,
@@ -58,6 +60,7 @@ export function AppShell() {
   }
 
   return (
+    <RealtimeProvider>
     <div className="grid h-dvh grid-cols-1 overflow-hidden bg-canvas md:grid-cols-[64px_minmax(0,1fr)] xl:grid-cols-[232px_minmax(0,1fr)]">
       <aside className="hidden min-h-0 min-w-0 bg-navy text-canvas md:flex md:flex-col">
         <Sidebar appName={appName} items={items} collapsed onOpenRail={() => setRailOpen(true)} />
@@ -68,7 +71,9 @@ export function AppShell() {
             {appName}
           </NavLink>
           <DatasetSwitcher />
-          <div className="ml-auto">
+          <div className="ml-auto flex items-center gap-2">
+            <LiveStatus />
+            <NotificationBell />
             <Popover>
               <PopoverTrigger asChild>
                 <button
@@ -133,6 +138,7 @@ export function AppShell() {
         : null}
       <ChangePasswordDialog open={passwordOpen} onOpenChange={setPasswordOpen} />
     </div>
+    </RealtimeProvider>
   );
 }
 

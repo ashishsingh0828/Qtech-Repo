@@ -30,6 +30,8 @@ type GridProps = {
   activeCell: ActiveCell | null;
   editor: { rowId: string; columnKey: string; draft: string } | null;
   flashKey: string | null;
+  scrollRowId?: string | null;
+  pulseKeys?: readonly string[];
   recent: Map<string, RecentEdit>;
   filters: Record<string, ColumnFilter>;
   sort: SortState;
@@ -73,6 +75,11 @@ export function RecordsGrid(props: GridProps) {
     estimateSize: () => props.rowHeight,
     overscan: 8,
   });
+  useEffect(() => {
+    if (!props.scrollRowId) return;
+    const index = props.rows.findIndex((row) => row.id === props.scrollRowId);
+    if (index >= 0) rowVirtualizer.scrollToIndex(index, { align: "center" });
+  }, [props.rows, props.scrollRowId, rowVirtualizer]);
   const columnVirtualizer = useVirtualizer({
     horizontal: true,
     count: props.scrollColumns.length,
@@ -500,6 +507,7 @@ function DataCell({ row, column, width, grid }: { row: RowProjection; column: Da
         selected && "ring-2 ring-inset ring-gold",
         highlighted && "bg-gold-soft",
         grid.flashKey === `${row.id}:${column.key}` && "cell-flash",
+        grid.scrollRowId === row.id && grid.pulseKeys?.includes(column.key) && "cell-pulse",
         recent && "edit-mark",
       )}
       style={{ width }}

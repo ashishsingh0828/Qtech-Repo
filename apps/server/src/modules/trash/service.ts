@@ -8,6 +8,8 @@ import { logger } from "../../lib/logger";
 import { prisma } from "../../lib/prisma";
 import { syncMirrorFields } from "../datasets/mirrors";
 import { restoreColumn, restoreGroup } from "../datasets/structure";
+import { enqueueOutbox } from "../notifications/outbox";
+import { structurePhrase } from "../notifications/payload";
 
 export type TrashKind = "datasets" | "rows" | "columns" | "groups";
 
@@ -183,6 +185,20 @@ async function restoreDataset(actor: PublicUser, datasetId: string): Promise<voi
         actionId,
       },
     });
+    await enqueueOutbox(
+      tx,
+      {
+        kind: "dataset.restored",
+        datasetId,
+        datasetName: dataset.name,
+        actorId: actor.id,
+        actorName: actor.name,
+        actorRole: actor.role,
+        audience: "all",
+        summary: structurePhrase("dataset.restored", dataset.name),
+      },
+      { actionId },
+    );
   });
   emit(actor, datasetId, actionId, "dataset.restored");
 }
@@ -230,6 +246,21 @@ async function restoreDeletedRow(actor: PublicUser, rowId: string): Promise<void
         actionId,
       },
     });
+    await enqueueOutbox(
+      tx,
+      {
+        kind: "structure",
+        action: "row.restored",
+        datasetId: dataset.id,
+        rowId: row.id,
+        actorId: actor.id,
+        actorName: actor.name,
+        actorRole: actor.role,
+        audience: "managers",
+        summary: structurePhrase("row.restored"),
+      },
+      { actionId },
+    );
   });
   emit(actor, datasetId, actionId, "row.restored");
 }
@@ -245,6 +276,20 @@ async function purgeDataset(actor: PublicUser, datasetId: string): Promise<void>
     await tx.$executeRaw`DELETE FROM "OutboxEvent" WHERE payload::text LIKE ${`%${datasetId}%`}`;
     await tx.row.deleteMany({ where: { datasetId } });
     await tx.dataset.delete({ where: { id: datasetId } });
+    await enqueueOutbox(
+      tx,
+      {
+        kind: "dataset.purged",
+        datasetId,
+        datasetName: dataset.name,
+        actorId: actor.id,
+        actorName: actor.name,
+        actorRole: actor.role,
+        audience: "all",
+        summary: structurePhrase("dataset.purged", dataset.name),
+      },
+      { actionId },
+    );
   });
   try {
     publishEvent({ type: "dataset.purged", datasetId, actorId: actor.id, actionId });
@@ -261,6 +306,21 @@ async function purgeRow(actor: PublicUser, rowId: string): Promise<void> {
     await tx.row.delete({ where: { id: rowId } });
     const rowCount = await tx.row.count({ where: { datasetId: current.datasetId, deletedAt: null } });
     await tx.dataset.update({ where: { id: current.datasetId }, data: { rowCount } });
+    await enqueueOutbox(
+      tx,
+      {
+        kind: "structure",
+        action: "row.purged",
+        datasetId: current.datasetId,
+        rowId,
+        actorId: actor.id,
+        actorName: actor.name,
+        actorRole: actor.role,
+        audience: "managers",
+        summary: structurePhrase("row.purged"),
+      },
+      { actionId },
+    );
     return current;
   });
   emit(actor, row.datasetId, actionId, "row.purged");
@@ -282,6 +342,20 @@ async function purgeColumn(actor: PublicUser, datasetId: string, key: string): P
       await tx.activityLog.create({
         data: { datasetId, actorId: actor.id, actorName: actor.name, action: "column.purged", actionId, columnKey: key },
       });
+      await enqueueOutbox(
+        tx,
+        {
+          kind: "structure",
+          action: "column.purged",
+          datasetId,
+          actorId: actor.id,
+          actorName: actor.name,
+          actorRole: actor.role,
+          audience: "managers",
+          summary: structurePhrase("column.purged"),
+        },
+        { actionId },
+      );
     },
     { timeout: 120_000 },
   );
@@ -306,6 +380,20 @@ async function purgeGroup(actor: PublicUser, datasetId: string, groupId: string)
       await tx.activityLog.create({
         data: { datasetId, actorId: actor.id, actorName: actor.name, action: "group.purged", actionId, groupKey: group.groupKey },
       });
+      await enqueueOutbox(
+        tx,
+        {
+          kind: "structure",
+          action: "group.purged",
+          datasetId,
+          actorId: actor.id,
+          actorName: actor.name,
+          actorRole: actor.role,
+          audience: "managers",
+          summary: structurePhrase("group.purged"),
+        },
+        { actionId },
+      );
     },
     { timeout: 120_000 },
   );

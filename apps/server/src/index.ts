@@ -4,6 +4,8 @@ import { env } from "./env";
 import { ensureDefaultGroupAccess } from "./lib/access";
 import { ensureBootstrapAdmin } from "./modules/auth/service";
 import { ensureAllSystemColumns } from "./modules/datasets/systemColumns";
+import { startScheduler, stopScheduler } from "./modules/jobs/schedule";
+import { startOutboxWorker, stopOutboxWorker } from "./modules/notifications/worker";
 import { databaseAddress } from "./lib/databaseAddress";
 import { logger } from "./lib/logger";
 import { prisma } from "./lib/prisma";
@@ -46,6 +48,8 @@ async function main(): Promise<void> {
 
   const app = createApp();
   const server = app.listen(env.PORT, () => {
+    startOutboxWorker();
+    startScheduler();
     logger.info({ port: env.PORT }, `${env.APP_NAME} listening`);
   });
 
@@ -54,6 +58,8 @@ async function main(): Promise<void> {
     if (shuttingDown) return;
     shuttingDown = true;
     logger.info({ signal }, "Shutting down");
+    stopOutboxWorker();
+    stopScheduler();
     server.close(() => {
       void prisma.$disconnect().then(
         () => process.exit(0),
