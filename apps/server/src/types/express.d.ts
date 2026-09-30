@@ -14,6 +14,7 @@ declare global {
         mimetype: string;
         size: number;
         buffer: Buffer;
+        path?: string;
       };
     }
   }

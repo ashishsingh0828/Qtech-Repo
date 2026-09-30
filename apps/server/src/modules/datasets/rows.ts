@@ -17,6 +17,7 @@ import {
   projectSchema,
   projectValues,
   storedCell,
+  excelDateToISO,
   canEditGroup,
   type CellHistoryEntry,
   type DatasetDetail,
@@ -29,7 +30,9 @@ import { publishEvent } from "../../lib/events";
 import { logger } from "../../lib/logger";
 import { prisma } from "../../lib/prisma";
 import { env } from "../../env";
+import { lockLiveRow } from "../../lib/locks";
 import { syncMirrorFields } from "./mirrors";
+import { lockDataset } from "./structure";
 
 type RowRecord = {
   id: string;
@@ -115,6 +118,7 @@ export async function updateRow(
   const prepared = prepareChanges(schema, permissions, changes);
   const actionId = randomUUID();
   const updated = await prisma.$transaction(async (tx) => {
+    await lockLiveRow(tx, datasetId, rowId);
     const row = await tx.row.findFirst({ where: { id: rowId, datasetId, deletedAt: null } });
     if (!row) throw new AppError("NOT_FOUND", 404, "Row not found.");
     const projected = projectSchema(schema, permissions.groupAccess);
@@ -175,6 +179,7 @@ export async function createRow(
   const actionId = randomUUID();
   const created = await prisma.$transaction(
     async (tx) => {
+      await lockDataset(tx, datasetId);
       const position = await resolvePosition(tx, datasetId, input);
       await tx.row.updateMany({
         where: { datasetId, position: { gte: position } },
@@ -222,6 +227,7 @@ export async function duplicateRow(
   const actionId = randomUUID();
   const created = await prisma.$transaction(
     async (tx) => {
+      await lockDataset(tx, datasetId);
       const source = await tx.row.findFirst({ where: { id: rowId, datasetId, deletedAt: null } });
       if (!source) throw new AppError("NOT_FOUND", 404, "Row not found.");
       const position = source.position + 1;
@@ -266,6 +272,7 @@ export async function deleteRow(actor: PublicUser, datasetId: string, rowId: str
   await loadContext(actor, datasetId);
   const actionId = randomUUID();
   const rowCount = await prisma.$transaction(async (tx) => {
+    await lockDataset(tx, datasetId);
     const row = await tx.row.findFirst({ where: { id: rowId, datasetId, deletedAt: null } });
     if (!row) throw new AppError("NOT_FOUND", 404, "Row not found.");
     await tx.row.update({
@@ -298,12 +305,22 @@ export async function restoreRow(
   const { schema, permissions } = await loadContext(actor, datasetId);
   const actionId = randomUUID();
   const restored = await prisma.$transaction(async (tx) => {
+    await lockDataset(tx, datasetId);
     const row = await tx.row.findFirst({ where: { id: rowId, datasetId } });
     if (!row) throw new AppError("NOT_FOUND", 404, "Row not found.");
     if (!row.deletedAt) throw new AppError("CONFLICT", 409, "This row is not in Trash.");
+    const synced = syncMirrorFields(jsonRecord(row.data), schema);
     const saved = await tx.row.update({
       where: { id: row.id },
-      data: { deletedAt: null, deletedById: null, updatedById: actor.id, updatedByName: actor.name },
+      data: {
+        deletedAt: null,
+        deletedById: null,
+        updatedById: actor.id,
+        updatedByName: actor.name,
+        version: { increment: 1 },
+        data: synced.data as Prisma.InputJsonValue,
+        ...mirrorData(synced),
+      },
     });
     await tx.activityLog.create({
       data: {
@@ -516,12 +533,12 @@ function mirrorSnapshot(row: {
 }) {
   return {
     validated: row.validated,
-    validationDue: row.validationDue ? row.validationDue.toISOString().slice(0, 10) : null,
+    validationDue: row.validationDue ? excelDateToISO(row.validationDue) : null,
     verified: row.verified,
-    endDate: row.endDate ? row.endDate.toISOString().slice(0, 10) : null,
+    endDate: row.endDate ? excelDateToISO(row.endDate) : null,
     amcStatus: row.amcStatus,
-    nextFollowUp: row.nextFollowUp ? row.nextFollowUp.toISOString().slice(0, 10) : null,
-    nextDuePms: row.nextDuePms ? row.nextDuePms.toISOString().slice(0, 10) : null,
+    nextFollowUp: row.nextFollowUp ? excelDateToISO(row.nextFollowUp) : null,
+    nextDuePms: row.nextDuePms ? excelDateToISO(row.nextDuePms) : null,
     updatedAt: row.updatedAt.toISOString(),
     assignedValidatorId: row.assignedValidatorId,
     assignedServiceId: row.assignedServiceId,

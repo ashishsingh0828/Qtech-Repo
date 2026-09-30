@@ -186,6 +186,32 @@ export function RecordsPage() {
     () => applyView(sourceRows, viewColumns, filters, sort, search, recentOnly, recentSince),
     [sourceRows, viewColumns, filters, sort, search, recentOnly, recentSince],
   );
+
+  useEffect(() => {
+    function onKey(event: KeyboardEvent) {
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
+      if (document.querySelector("[role='dialog']")) return;
+      const target = event.target;
+      if (target instanceof HTMLElement && target.closest("input, textarea, select, [contenteditable='true']")) return;
+      const key = event.key.toLowerCase();
+      if (event.key === "Escape") {
+        setEditor(null);
+        return;
+      }
+      if (key !== "j" && key !== "k") return;
+      event.preventDefault();
+      const columnKey = active?.columnKey ?? viewColumns[0]?.key;
+      if (!columnKey || filtered.length === 0) return;
+      const index = active ? filtered.findIndex((row) => row.id === active.rowId) : -1;
+      const nextIndex = key === "j" ? Math.min(filtered.length - 1, Math.max(0, index + 1)) : Math.max(0, index <= 0 ? 0 : index - 1);
+      const row = filtered[nextIndex];
+      if (!row) return;
+      setActive({ rowId: row.id, columnKey });
+      document.querySelector<HTMLElement>("[data-records-grid]")?.focus();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [active, filtered, viewColumns]);
   const recent = useMemo(() => {
     const map = new Map<string, RecentEdit>();
     for (const edit of editsQuery.data ?? []) {
@@ -935,7 +961,7 @@ function FilterBar({
   return (
     <div className="flex min-w-0 flex-wrap items-center gap-2">
       {chips.map((chip) => (
-        <button key={chip.id} type="button" className="inline-flex min-h-9 max-w-full items-center gap-2 rounded-full bg-surface-2 px-3 text-sm text-ink" onClick={chip.onRemove}>
+        <button key={chip.id} type="button" className="inline-flex min-h-11 max-w-full items-center gap-2 rounded-full bg-surface-2 px-3 text-sm text-ink" onClick={chip.onRemove}>
           <span className="min-w-0 truncate">{chip.label}</span>
           <span aria-hidden="true">×</span>
         </button>

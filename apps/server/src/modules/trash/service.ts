@@ -214,9 +214,27 @@ async function restoreDeletedRow(actor: PublicUser, rowId: string): Promise<void
         data: { position: { increment: 1 } },
       });
     }
+    const schema = parseDatasetSchema(dataset.schema);
+    if (!schema) throw new AppError("INTERNAL", 500, "Dataset schema is invalid.");
+    const synced = syncMirrorFields(jsonRecord(row.data), schema);
     await tx.row.update({
       where: { id: row.id },
-      data: { deletedAt: null, deletedById: null, position, updatedById: actor.id, updatedByName: actor.name },
+      data: {
+        deletedAt: null,
+        deletedById: null,
+        position,
+        updatedById: actor.id,
+        updatedByName: actor.name,
+        version: { increment: 1 },
+        data: synced.data as Prisma.InputJsonValue,
+        validated: synced.validated,
+        validationDue: synced.validationDue,
+        verified: synced.verified,
+        endDate: synced.endDate,
+        amcStatus: synced.amcStatus,
+        nextFollowUp: synced.nextFollowUp,
+        nextDuePms: synced.nextDuePms,
+      },
     });
     const rowCount = await tx.row.count({ where: { datasetId: dataset.id, deletedAt: null } });
     await tx.dataset.update({ where: { id: dataset.id }, data: { rowCount } });
@@ -258,6 +276,10 @@ async function purgeRow(actor: PublicUser, rowId: string): Promise<void> {
   const row = await prisma.$transaction(async (tx) => {
     const current = await tx.row.findUnique({ where: { id: rowId } });
     if (!current?.deletedAt) throw new AppError("NOT_FOUND", 404, "Row not found.");
+    await tx.serviceCall.deleteMany({ where: { rowId } });
+    await tx.activityLog.deleteMany({ where: { rowId } });
+    await tx.notification.deleteMany({ where: { rowId } });
+    await tx.$executeRaw`DELETE FROM "OutboxEvent" WHERE payload::text LIKE ${`%${rowId}%`}`;
     await tx.row.delete({ where: { id: rowId } });
     const rowCount = await tx.row.count({ where: { datasetId: current.datasetId, deletedAt: null } });
     await tx.dataset.update({ where: { id: current.datasetId }, data: { rowCount } });

@@ -6,7 +6,8 @@ import { asyncHandler } from "../../lib/asyncHandler";
 import { AppError } from "../../lib/errors";
 import { validate, validated } from "../../lib/validate";
 import { currentUser, requireAuth, requireCapability } from "../../middleware/auth";
-import { confirmMerge, previewMerge } from "./merge";
+import { confirmMerge, previewMerge, rejectMergePreview } from "./merge";
+import { releaseUpload } from "../../lib/uploads";
 import {
   cellHistory,
   createRow,
@@ -80,12 +81,16 @@ datasetsRouter.post(
   receiveUpload,
   asyncHandler(async (req, res) => {
     const file = req.file;
-    if (!file) throw new AppError("VALIDATION", 400, "Choose an .xlsx file.");
-    const dataset = await importDataset(currentUser(req), {
-      originalname: file.originalname,
-      buffer: file.buffer,
-    });
-    res.status(201).json({ dataset });
+    try {
+      if (!file) throw new AppError("VALIDATION", 400, "Choose an .xlsx file.");
+      const dataset = await importDataset(currentUser(req), {
+        originalname: file.originalname,
+        buffer: file.buffer,
+      });
+      res.status(201).json({ dataset });
+    } finally {
+      releaseUpload(file);
+    }
   }),
 );
 
@@ -311,12 +316,16 @@ datasetsRouter.post(
   asyncHandler(async (req, res) => {
     const { params } = validated<typeof importPreviewSchema._output>(req);
     const file = req.file;
-    if (!file) throw new AppError("VALIDATION", 400, "Choose an .xlsx file.");
-    const preview = await previewMerge(currentUser(req), params.id, {
-      originalname: file.originalname,
-      buffer: file.buffer,
-    });
-    res.status(200).json(preview);
+    try {
+      if (!file) throw new AppError("VALIDATION", 400, "Choose an .xlsx file.");
+      const preview = await previewMerge(currentUser(req), params.id, {
+        originalname: file.originalname,
+        buffer: file.buffer,
+      });
+      res.status(200).json(preview);
+    } finally {
+      releaseUpload(file);
+    }
   }),
 );
 
@@ -326,8 +335,13 @@ datasetsRouter.post(
   validate(importConfirmSchema),
   asyncHandler(async (req, res) => {
     const { params, body } = validated<typeof importConfirmSchema._output>(req);
-    const result = await confirmMerge(currentUser(req), params.id, body.token);
-    res.status(200).json(result);
+    try {
+      const result = await confirmMerge(currentUser(req), params.id, body.token);
+      res.status(200).json(result);
+    } catch (error) {
+      if (error instanceof AppError && error.status === 400) rejectMergePreview(body.token);
+      throw error;
+    }
   }),
 );
 

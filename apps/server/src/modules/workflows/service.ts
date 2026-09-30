@@ -11,6 +11,7 @@ import {
   parseDatasetSchema,
   quickFiltersForRole,
   todayInTimeZone,
+  excelDateToISO,
 } from "@app/shared";
 import { Prisma, type CallType } from "@prisma/client";
 import { env } from "../../env";
@@ -19,6 +20,7 @@ import { AppError } from "../../lib/errors";
 import { publishEvent } from "../../lib/events";
 import { logger } from "../../lib/logger";
 import { prisma } from "../../lib/prisma";
+import { lockLiveRow } from "../../lib/locks";
 import { syncMirrorFields, type MirrorExtras } from "../datasets/mirrors";
 
 type ActionName = "validate" | "verify" | "amc" | "pms" | "followup" | "assign" | "calls";
@@ -313,6 +315,7 @@ export async function undoAction(actor: PublicUser, datasetId: string, rowId: st
   let version = 0;
   await prisma.$transaction(async (tx) => {
     await lockDataset(tx, datasetId);
+    await lockLiveRow(tx, datasetId, rowId);
     const row = await tx.row.findFirst({ where: { id: rowId, datasetId, deletedAt: null } });
     if (!row) throw new AppError("NOT_FOUND", 404, "Row not found.");
     const logs = await tx.activityLog.findMany({
@@ -468,6 +471,7 @@ async function runAction(
   let version = 0;
   await prisma.$transaction(async (tx) => {
     await lockDataset(tx, datasetId);
+    await lockLiveRow(tx, datasetId, rowId);
     const row = await tx.row.findFirst({ where: { id: rowId, datasetId, deletedAt: null } });
     if (!row) throw new AppError("NOT_FOUND", 404, "Row not found.");
     const schema = await schemaOf(tx, datasetId);
@@ -530,6 +534,7 @@ async function mutateCalls(
   let version = 0;
   await prisma.$transaction(async (tx) => {
     await lockDataset(tx, datasetId);
+    await lockLiveRow(tx, datasetId, rowId);
     const row = await tx.row.findFirst({ where: { id: rowId, datasetId, deletedAt: null } });
     if (!row) throw new AppError("NOT_FOUND", 404, "Row not found.");
     const extraMeta = await change(tx, row);
@@ -673,7 +678,7 @@ function activityVisible(
   permissions: Permissions,
 ): boolean {
   const key = groupKey || groupForColumnKey(schema, columnKey);
-  if (!key) return true;
+  if (!key) return columnKey == null || permissions.groupAccess === "all";
   if (key === "complaint" || key === "breakdown_calls") {
     return canViewGroup(permissions.groupAccess, "complaint") || canViewGroup(permissions.groupAccess, "breakdown_calls");
   }
@@ -742,7 +747,7 @@ const snapshotSelect = {
 
 function dateOnly(value: Date | null): string | null {
   if (!value) return null;
-  return value.toISOString().slice(0, 10);
+  return excelDateToISO(value);
 }
 
 function currentDay(): string {

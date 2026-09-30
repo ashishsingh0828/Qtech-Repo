@@ -9,6 +9,9 @@ import { env } from "./env";
 import { logger } from "./lib/logger";
 import { errorHandler } from "./middleware/errorHandler";
 import { requestId } from "./middleware/requestId";
+import { permissionsFor } from "./lib/account";
+import { attachSse } from "./lib/sse";
+import { currentUser, requireAuth } from "./middleware/auth";
 import { accessRouter } from "./modules/access/routes";
 import { authRouter } from "./modules/auth/routes";
 import { datasetsRouter } from "./modules/datasets/routes";
@@ -25,7 +28,15 @@ export function createApp() {
   app.set("trust proxy", 1);
   app.use(requestId);
   app.use(helmet());
-  app.use(compression());
+  app.use(
+    compression({
+      filter(req, res) {
+        const url = req.url ?? "";
+        if (url === "/api/events" || url.startsWith("/api/events?")) return false;
+        return compression.filter(req, res);
+      },
+    }),
+  );
   app.use(express.json({ limit: "1mb" }));
   app.use(cookieParser());
   app.use(
@@ -35,6 +46,13 @@ export function createApp() {
     }),
   );
 
+  app.get("/api/events", requireAuth, (req, res, next) => {
+    const user = currentUser(req);
+    permissionsFor(user.role).then(
+      (permissions) => attachSse(req, res, user.id, user.role, permissions),
+      (error: unknown) => next(error),
+    );
+  });
   app.use("/api/health", healthRouter);
   app.use("/api/auth", authRouter);
   app.use("/api/users", usersRouter);
@@ -43,12 +61,13 @@ export function createApp() {
   app.use("/api/access", accessRouter);
 
   if (env.NODE_ENV === "production") {
-    app.use(express.static(webDist, { index: false }));
+    app.use(express.static(webDist, { index: false, maxAge: "1h" }));
     app.use((req, res, next) => {
       if (req.path.startsWith("/api")) {
         next();
         return;
       }
+      res.setHeader("Cache-Control", "no-cache");
       res.sendFile(path.join(webDist, "index.html"), (error) => {
         if (error) next(error);
       });

@@ -9,6 +9,7 @@ import { AuthGate } from "../features/auth/auth-gate";
 import { LoginPage } from "../features/auth/login-page";
 import { AppShell } from "../features/shell/app-shell";
 import { NotFoundPage } from "../features/shell/not-found-page";
+import { RouteError } from "../features/shell/route-error";
 import { RequireCapability } from "../features/shell/require-capability";
 import { TeamPage } from "../features/team/team-page";
 import { WelcomePage } from "../features/welcome/welcome-page";
@@ -16,6 +17,7 @@ import { WelcomePage } from "../features/welcome/welcome-page";
 export const router = createBrowserRouter([
   {
     element: <AuthGate />,
+    errorElement: <RouteError />,
     children: [
       { path: "/login", element: <LoginPage /> },
       {

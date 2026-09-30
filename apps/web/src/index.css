@@ -14,7 +14,7 @@
   --hairline: #e8e4dd;
   --ink: #14171f;
   --ink-2: #4a4f5c;
-  --muted: #7b7f8b;
+  --muted: #5a5f6b;
   --navy: #0e1726;
   --navy-2: #172236;
   --gold: #b8955a;
@@ -130,9 +130,17 @@ body {
 }
 
 @media (pointer: coarse) {
+  .tap,
+  button,
+  a[href],
+  summary,
+  [role="button"],
+  [role="tab"] {
+    min-height: 44px;
+  }
+
   .tap {
     min-width: 44px;
-    min-height: 44px;
   }
 }
 

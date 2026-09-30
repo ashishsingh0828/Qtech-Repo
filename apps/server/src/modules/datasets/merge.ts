@@ -40,6 +40,19 @@ type Plan = {
 };
 
 const cache = new Map<string, Plan>();
+let sweepTimer: NodeJS.Timeout | null = null;
+
+export function startMergeSweep(): void {
+  if (sweepTimer) return;
+  sweepTimer = setInterval(() => sweep(), 60_000);
+  sweepTimer.unref();
+}
+
+export function stopMergeSweep(): void {
+  if (sweepTimer) clearInterval(sweepTimer);
+  sweepTimer = null;
+  sweep();
+}
 
 export async function previewMerge(
   actor: PublicUser,
@@ -201,6 +214,11 @@ export async function confirmMerge(actor: PublicUser, datasetId: string, token: 
     logger.error({ err: error }, "Failed to publish dataset.merged");
   }
   return plan.preview;
+}
+
+export function rejectMergePreview(token: string): void {
+  cache.delete(token);
+  sweep();
 }
 
 function buildPlan(

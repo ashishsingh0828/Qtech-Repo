@@ -1,7 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 import type { Prisma } from "@prisma/client";
 import type { CookieOptions, Response } from "express";
-import { env } from "../env";
 import { prisma } from "./prisma";
 
 export const SESSION_COOKIE = "qsh_session";
@@ -21,7 +20,7 @@ function cookieOptions(): CookieOptions {
   return {
     httpOnly: true,
     sameSite: "lax",
-    secure: env.COOKIE_SECURE,
+    secure: process.env.COOKIE_SECURE === "true",
     path: "/",
   };
 }
