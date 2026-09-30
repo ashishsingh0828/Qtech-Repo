@@ -132,7 +132,7 @@ export function RecordsGrid(props: GridProps) {
       ref={scrollRef}
       data-records-grid
       tabIndex={0}
-      className="min-h-0 min-w-0 flex-1 overflow-auto rounded-card border border-hairline bg-surface outline-none"
+      className="h-full min-h-0 min-w-0 flex-1 overflow-auto rounded-card border border-hairline bg-surface outline-none"
       onKeyDown={(event) => {
         if (props.editor) return;
         if (!props.activeCell) return;

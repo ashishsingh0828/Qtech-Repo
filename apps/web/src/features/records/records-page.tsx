@@ -46,6 +46,7 @@ import {
 import { ApiError, api } from "../../lib/api";
 import { errorText, isUnauthenticated } from "../../lib/errors";
 import { queryClient } from "../../lib/query";
+import { refreshWorkspace } from "../workspace/actions";
 import { useAuth } from "../auth/auth-gate";
 import { useRealtime } from "../realtime/realtime";
 import { downloadWorkbook } from "./download";
@@ -422,7 +423,7 @@ export function RecordsPage() {
   const visibleColumnCount = detail.schema.columns.filter((column) => !hidden.has(column.key)).length;
 
   return (
-    <div className="flex min-w-0 flex-col gap-3 md:h-[calc(100dvh-var(--topbar-h)-3rem)] md:max-h-[calc(100dvh-var(--topbar-h)-3rem)] md:min-h-0 md:overflow-hidden xl:h-[calc(100dvh-var(--topbar-h)-4rem)] xl:max-h-[calc(100dvh-var(--topbar-h)-4rem)]">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3 overflow-hidden">
       {deletedName(datasetId) ? (
         <div className="fixed inset-x-0 top-[var(--topbar-h)] z-popover flex flex-wrap items-center justify-between gap-3 border-b border-hairline bg-gold-soft px-4 py-3">
           <p className="text-sm text-ink">This dataset was deleted by {deletedName(datasetId)}</p>
@@ -645,7 +646,7 @@ export function RecordsPage() {
               {activeRow.updatedByName ? ` by ${activeRow.updatedByName}` : ""}
             </p>
           ) : null}
-          <div className="hidden min-h-48 min-w-0 flex-1 md:flex">
+          <div className="hidden min-h-0 min-w-0 flex-1 overflow-hidden md:flex">
             <RecordsGrid
               datasetId={datasetId}
               rows={filtered}
@@ -968,8 +969,7 @@ export function RecordsPage() {
     try {
       const result = await api<{ results: Array<{ ok: boolean }> }>(`/api/datasets/${datasetId}${path}`, { method: "POST", body });
       const saved = result.results.filter((item) => item.ok).length;
-      await queryClient.invalidateQueries({ queryKey: ["dataset-rows", datasetId] });
-      await queryClient.invalidateQueries({ queryKey: ["dataset-summary", datasetId] });
+      await refreshWorkspace(datasetId);
       toast("Saved", { duration: UNDO_SECONDS * 1000, description: `${saved} of ${result.results.length} rows updated.` });
     } catch (error) {
       if (!isUnauthenticated(error)) toast.error(errorText(error, "Could not update the rows."));

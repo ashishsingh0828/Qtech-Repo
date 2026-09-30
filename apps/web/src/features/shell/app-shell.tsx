@@ -162,8 +162,8 @@ export function AppShell() {
             </Popover>
           </div>
         </header>
-        <div className={cn("min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden", items.length > 0 && "pb-16 md:pb-0")}>
-          <div className="mx-auto flex min-h-full w-full min-w-0 max-w-content flex-col px-4 py-4 md:px-6 md:py-6 xl:px-8">
+        <div className={cn("flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden", items.length > 0 && "pb-16 md:pb-0")}>
+          <div className="mx-auto flex h-full min-h-0 w-full min-w-0 max-w-content flex-col overflow-y-auto overflow-x-hidden px-4 py-4 md:px-6 md:py-6 xl:px-8">
             <Outlet />
           </div>
         </div>

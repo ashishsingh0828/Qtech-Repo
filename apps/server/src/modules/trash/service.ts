@@ -212,7 +212,7 @@ async function restoreDeletedRow(actor: PublicUser, rowId: string): Promise<void
     const dataset = await tx.dataset.findUnique({ where: { id: row.datasetId } });
     if (!dataset || dataset.deletedAt) throw new AppError("CONFLICT", 409, "Restore the dataset first.");
     datasetId = dataset.id;
-    await tx.$queryRaw`SELECT id FROM "Dataset" WHERE id = ${dataset.id}::uuid FOR UPDATE`;
+    await tx.$queryRaw`SELECT id FROM "Dataset" WHERE id = ${dataset.id} FOR UPDATE`;
     const occupied = await tx.row.findFirst({
       where: { datasetId: dataset.id, deletedAt: null, position: row.position, id: { not: row.id } },
       select: { id: true },
@@ -330,7 +330,7 @@ async function purgeColumn(actor: PublicUser, datasetId: string, key: string): P
   const actionId = randomUUID();
   await prisma.$transaction(
     async (tx) => {
-      await tx.$queryRaw`SELECT id FROM "Dataset" WHERE id = ${datasetId}::uuid AND "deletedAt" IS NULL FOR UPDATE`;
+      await tx.$queryRaw`SELECT id FROM "Dataset" WHERE id = ${datasetId} AND "deletedAt" IS NULL FOR UPDATE`;
       const dataset = await tx.dataset.findUnique({ where: { id: datasetId } });
       const schema = parseDatasetSchema(dataset?.schema);
       if (!schema) throw new AppError("NOT_FOUND", 404, "Dataset not found.");
@@ -366,7 +366,7 @@ async function purgeGroup(actor: PublicUser, datasetId: string, groupId: string)
   const actionId = randomUUID();
   await prisma.$transaction(
     async (tx) => {
-      await tx.$queryRaw`SELECT id FROM "Dataset" WHERE id = ${datasetId}::uuid AND "deletedAt" IS NULL FOR UPDATE`;
+      await tx.$queryRaw`SELECT id FROM "Dataset" WHERE id = ${datasetId} AND "deletedAt" IS NULL FOR UPDATE`;
       const dataset = await tx.dataset.findUnique({ where: { id: datasetId } });
       const schema = parseDatasetSchema(dataset?.schema);
       if (!schema) throw new AppError("NOT_FOUND", 404, "Dataset not found.");

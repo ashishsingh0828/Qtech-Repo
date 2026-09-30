@@ -66,7 +66,7 @@ export async function ensureDatasetSystemColumns(datasetId: string): Promise<voi
   await prisma.$transaction(
     async (tx) => {
       const locked = await tx.$queryRaw<Array<{ id: string }>>`
-        SELECT id FROM "Dataset" WHERE id = ${datasetId}::uuid AND "deletedAt" IS NULL FOR UPDATE
+        SELECT id FROM "Dataset" WHERE id = ${datasetId} AND "deletedAt" IS NULL FOR UPDATE
       `;
       if (locked.length === 0) return;
       const dataset = await tx.dataset.findUnique({ where: { id: datasetId }, select: { schema: true } });

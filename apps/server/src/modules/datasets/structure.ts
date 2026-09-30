@@ -300,7 +300,7 @@ export async function loadSchema(tx: Prisma.TransactionClient, datasetId: string
 
 export async function lockDataset(tx: Prisma.TransactionClient, datasetId: string): Promise<void> {
   const rows = await tx.$queryRaw<Array<{ id: string }>>`
-    SELECT id FROM "Dataset" WHERE id = ${datasetId}::uuid AND "deletedAt" IS NULL FOR UPDATE
+    SELECT id FROM "Dataset" WHERE id = ${datasetId} AND "deletedAt" IS NULL FOR UPDATE
   `;
   if (rows.length === 0) throw new AppError("NOT_FOUND", 404, "Dataset not found.");
 }

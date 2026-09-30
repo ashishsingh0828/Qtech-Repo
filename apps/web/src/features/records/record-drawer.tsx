@@ -5,6 +5,7 @@ import {
   canPerformAction,
   canViewGroup,
   effectiveAmcStatus,
+  formatDisplayDate,
   isWarrantyExpired,
   pmsEntryStatus,
   warrantyLiveStatus,
@@ -13,6 +14,7 @@ import { formatDistanceToNow } from "date-fns";
 import { Lock } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { refreshWorkspace } from "../workspace/actions";
 import {
   Badge,
   Button,
@@ -40,7 +42,6 @@ import {
 import type { PillTone } from "../../components/ui";
 import { api } from "../../lib/api";
 import { errorText, isUnauthenticated } from "../../lib/errors";
-import { queryClient } from "../../lib/query";
 import { displayText, statusTone } from "./model";
 
 type CallItem = {
@@ -131,6 +132,9 @@ export function RecordDrawer({
   const email = textOf(row, schema.columns, "email");
   const endDate = textOf(row, schema.columns, "end_date");
   const validated = textOf(row, schema.columns, "validated");
+  const validatedBy = textOf(row, schema.columns, "validated_by");
+  const validatedAt = textOf(row, schema.columns, "validated_at");
+  const rejectionReason = textOf(row, schema.columns, "rejection_reason");
   const verified = textOf(row, schema.columns, "verified");
   const amcStored = textOf(row, schema.columns, "amc_status");
   const today = new Date().toISOString().slice(0, 10);
@@ -145,9 +149,7 @@ export function RecordDrawer({
         method: "POST",
         body,
       });
-      await queryClient.invalidateQueries({ queryKey: ["dataset-rows", datasetId] });
-      await queryClient.invalidateQueries({ queryKey: ["dataset-summary", datasetId] });
-      await queryClient.invalidateQueries({ queryKey: ["dataset", datasetId] });
+      await refreshWorkspace(datasetId);
       toast("Saved", {
         duration: UNDO_SECONDS * 1000,
         action: {
@@ -157,7 +159,7 @@ export function RecordDrawer({
               method: "POST",
               body: { actionId: result.actionId },
             }).then(async () => {
-              await queryClient.invalidateQueries({ queryKey: ["dataset-rows", datasetId] });
+              await refreshWorkspace(datasetId);
               toast.success("Undone.");
             });
           },
@@ -255,6 +257,9 @@ export function RecordDrawer({
                       {group.groupKey === "data_validation" ? (
                         <ValidationPanel
                           validated={validated}
+                          validatedBy={validatedBy}
+                          validatedAt={validatedAt}
+                          rejectionReason={rejectionReason}
                           verified={verified}
                           role={role}
                           busy={busy}
@@ -445,6 +450,9 @@ export function RecordDrawer({
 
 function ValidationPanel(props: {
   validated: string;
+  validatedBy: string;
+  validatedAt: string;
+  rejectionReason: string;
   verified: string;
   role: Role;
   busy: boolean;
@@ -461,8 +469,15 @@ function ValidationPanel(props: {
   onSendBack: () => void;
 }) {
   const manager = props.role === "admin" || props.role === "manager";
+  const when = /^\d{4}-\d{2}-\d{2}$/.test(props.validatedAt) ? formatDisplayDate(props.validatedAt) : props.validatedAt;
   return (
     <div className="flex flex-col gap-2">
+      <p className="text-sm text-ink">
+        {props.validated
+          ? `Validated ${props.validated}${props.validatedBy ? ` by ${props.validatedBy}` : ""}${when ? ` on ${when}` : ""}`
+          : "Not validated yet."}
+      </p>
+      {props.validated === "No" && props.rejectionReason ? <p className="text-sm text-ink-2">{props.rejectionReason}</p> : null}
       {props.canValidate ? (
         <div className="flex gap-2">
           <Button size="sm" variant={props.validated === "Yes" ? "primary" : "secondary"} disabled={props.busy} onClick={props.onYes}>
