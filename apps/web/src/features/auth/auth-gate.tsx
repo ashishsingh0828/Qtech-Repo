@@ -90,6 +90,7 @@ export function AuthGate() {
         user: session.user,
         permissions: session.permissions,
         countryCode: session.countryCode,
+        timeZone: session.timeZone,
         refresh: async () => {
           await query.refetch();
         },

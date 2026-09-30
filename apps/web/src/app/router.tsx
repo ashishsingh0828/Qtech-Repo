@@ -3,15 +3,16 @@ import { AccessPage } from "../features/access/access-page";
 import { DatasetsPage } from "../features/datasets/datasets-page";
 import { RecordsIndexPage } from "../features/records/records-index";
 import { RecordsPage } from "../features/records/records-page";
-import { SchemaPage } from "../features/schema/schema-page";
+import { SchemaPage, SchemaEntry } from "../features/schema/schema-page";
 import { TrashPage } from "../features/trash/trash-page";
 import { AuthGate } from "../features/auth/auth-gate";
 import { LoginPage } from "../features/auth/login-page";
 import { AppShell } from "../features/shell/app-shell";
 import { NotFoundPage } from "../features/shell/not-found-page";
-import { RequireCapability } from "../features/shell/require-capability";
+import { RequireCapability, RequireRole } from "../features/shell/require-capability";
 import { TeamPage } from "../features/team/team-page";
-import { WelcomePage } from "../features/welcome/welcome-page";
+import { ActivityPage } from "../features/workspace/activity-page";
+import { HomePage } from "../features/workspace/home-page";
 
 export const router = createBrowserRouter([
   {
@@ -22,8 +23,16 @@ export const router = createBrowserRouter([
         path: "/",
         element: <AppShell />,
         children: [
-          { index: true, element: <WelcomePage /> },
+          { index: true, element: <HomePage /> },
           { path: "datasets", element: <DatasetsPage /> },
+          {
+            path: "schema",
+            element: (
+              <RequireCapability capability="manageStructure">
+                <SchemaEntry />
+              </RequireCapability>
+            ),
+          },
           {
             path: "datasets/:id/schema",
             element: (
@@ -56,6 +65,14 @@ export const router = createBrowserRouter([
               <RequireCapability capability="manageAccess">
                 <AccessPage />
               </RequireCapability>
+            ),
+          },
+          {
+            path: "activity",
+            element: (
+              <RequireRole roles={["admin", "manager"]}>
+                <ActivityPage />
+              </RequireRole>
             ),
           },
           { path: "*", element: <NotFoundPage /> },

@@ -28,6 +28,7 @@ import {
 import { api } from "../../lib/api";
 import { errorText, isUnauthenticated } from "../../lib/errors";
 import { queryClient } from "../../lib/query";
+import { useSelectedDataset } from "../workspace/use-dataset";
 
 const TYPE_LABELS: Record<ColumnType, string> = {
   text: "Text",
@@ -41,8 +42,16 @@ const TYPE_LABELS: Record<ColumnType, string> = {
   category: "Category",
 };
 
-export function SchemaPage() {
-  const { id = "" } = useParams();
+export function SchemaEntry() {
+  const selected = useSelectedDataset();
+  if (selected.loading) return <Skeleton className="h-40" />;
+  if (!selected.id) return <EmptyState message="Import a dataset before editing its schema." />;
+  return <SchemaPage datasetId={selected.id} />;
+}
+
+export function SchemaPage({ datasetId }: { datasetId?: string }) {
+  const params = useParams();
+  const id = datasetId || params.id || "";
   const [addColumnOpen, setAddColumnOpen] = useState(false);
   const [addGroupOpen, setAddGroupOpen] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<DatasetColumn | null>(null);

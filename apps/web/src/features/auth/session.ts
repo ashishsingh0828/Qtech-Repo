@@ -6,6 +6,7 @@ export type SessionState = {
   user: PublicUser;
   permissions: Permissions;
   countryCode?: string;
+  timeZone?: string;
 };
 
 export const meQueryKey = ["auth", "me"] as const;

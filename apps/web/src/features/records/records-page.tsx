@@ -546,6 +546,7 @@ export function RecordsPage() {
               value={search}
               placeholder="Search visible columns"
               aria-label="Search"
+              data-search=""
               className="max-w-xs"
               onChange={(event) => setSearch(event.target.value)}
             />
