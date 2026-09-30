@@ -1,0 +1,42 @@
+{
+  "name": "@app/server",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsup",
+    "start": "node dist/index.js",
+    "typecheck": "tsc --noEmit",
+    "postinstall": "node --env-file=../../.env ../../node_modules/prisma/build/index.js generate",
+    "db:migrate": "node --env-file=../../.env ../../node_modules/prisma/build/index.js migrate dev",
+    "db:studio": "node --env-file=../../.env ../../node_modules/prisma/build/index.js studio"
+  },
+  "dependencies": {
+    "@app/shared": "0.0.0",
+    "@prisma/client": "6.19.3",
+    "bcryptjs": "^3.0.2",
+    "compression": "^1.8.1",
+    "cookie-parser": "^1.4.7",
+    "date-fns": "^4.1.0",
+    "dotenv": "^16.6.1",
+    "exceljs": "^4.4.0",
+    "express": "^5.1.0",
+    "helmet": "^8.1.0",
+    "multer": "^2.0.2",
+    "node-cron": "^4.2.1",
+    "pino": "^10.1.0",
+    "pino-http": "^11.0.0",
+    "zod": "^4.1.12"
+  },
+  "devDependencies": {
+    "@types/compression": "^1.8.1",
+    "@types/cookie-parser": "^1.4.9",
+    "@types/express": "^5.0.3",
+    "@types/node": "^22.19.0",
+    "prisma": "6.19.3",
+    "tsup": "^8.5.0",
+    "tsx": "^4.20.5",
+    "typescript": "5.9.3"
+  }
+}

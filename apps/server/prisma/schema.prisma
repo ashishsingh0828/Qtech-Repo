@@ -1,0 +1,203 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  admin
+  manager
+  validator
+  service
+}
+
+enum CallType {
+  Complaint
+  Breakdown
+  Emergency
+  CourtesyVisit
+}
+
+enum CallStatus {
+  Open
+  Resolved
+}
+
+enum Priority {
+  normal
+  high
+}
+
+model User {
+  id           String    @id @default(uuid())
+  name         String
+  email        String    @unique
+  passwordHash String
+  role         Role
+  active       Boolean   @default(true)
+  lastLoginAt  DateTime? @db.Timestamptz(3)
+  lastSeenAt   DateTime? @db.Timestamptz(3)
+  createdAt    DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime  @updatedAt @db.Timestamptz(3)
+
+  sessions      Session[]
+  datasets      Dataset[]      @relation("DatasetUploadedBy")
+  notifications Notification[]
+}
+
+model Session {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String   @unique
+  expiresAt DateTime @db.Timestamptz(3)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+}
+
+model Dataset {
+  id             String    @id @default(uuid())
+  name           String
+  sourceFileName String
+  schema         Json
+  rowCount       Int
+  uploadedById   String
+  uploadedBy     User      @relation("DatasetUploadedBy", fields: [uploadedById], references: [id])
+  createdAt      DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime  @updatedAt @db.Timestamptz(3)
+  deletedAt      DateTime? @db.Timestamptz(3)
+  deletedById    String?
+
+  rows Row[]
+}
+
+model Row {
+  id                  String    @id @default(uuid())
+  datasetId           String
+  dataset             Dataset   @relation(fields: [datasetId], references: [id], onDelete: Cascade)
+  position            Int
+  data                Json
+  version             Int       @default(1)
+  validated           String?
+  validationDue       DateTime? @db.Date
+  verified            String?
+  endDate             DateTime? @db.Date
+  amcStatus           String?
+  nextFollowUp        DateTime? @db.Date
+  nextDuePms          DateTime? @db.Date
+  assignedValidatorId String?
+  assignedServiceId   String?
+  updatedById         String?
+  updatedByName       String?
+  createdAt           DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt           DateTime  @updatedAt @db.Timestamptz(3)
+  deletedAt           DateTime? @db.Timestamptz(3)
+  deletedById         String?
+
+  @@index([datasetId, position])
+  @@index([datasetId, deletedAt])
+  @@index([datasetId, validated])
+  @@index([datasetId, validationDue])
+  @@index([datasetId, verified])
+  @@index([datasetId, endDate])
+  @@index([datasetId, amcStatus])
+  @@index([datasetId, nextFollowUp])
+  @@index([datasetId, nextDuePms])
+  @@index([assignedValidatorId])
+  @@index([assignedServiceId])
+  @@index([datasetId, updatedAt])
+}
+
+model RoleGroupAccess {
+  id       String  @id @default(uuid())
+  role     Role
+  groupKey String
+  canView  Boolean
+  canEdit  Boolean
+
+  @@unique([role, groupKey])
+}
+
+model ActivityLog {
+  id        String   @id @default(uuid())
+  datasetId String?
+  rowId     String?
+  actorId   String?
+  actorName String
+  action    String
+  actionId  String?
+  columnKey String?
+  groupKey  String?
+  fromValue Json?
+  toValue   Json?
+  meta      Json?
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([datasetId, rowId, createdAt])
+  @@index([datasetId, createdAt])
+  @@index([actionId])
+}
+
+model ServiceCall {
+  id           String     @id @default(uuid())
+  datasetId    String
+  rowId        String
+  type         CallType
+  description  String
+  reportedAt   DateTime   @db.Timestamptz(3)
+  status       CallStatus @default(Open)
+  resolvedAt   DateTime?  @db.Timestamptz(3)
+  resolvedById String?
+  note         String?
+  createdById  String
+  createdAt    DateTime   @default(now()) @db.Timestamptz(3)
+  deletedAt    DateTime?  @db.Timestamptz(3)
+
+  @@index([datasetId, rowId])
+  @@index([status])
+}
+
+model Notification {
+  id           String    @id @default(uuid())
+  userId       String
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type         String
+  priority     Priority  @default(normal)
+  datasetId    String?
+  rowId        String?
+  actorId      String?
+  actorName    String
+  customerName String?
+  params       Json
+  readAt       DateTime? @db.Timestamptz(3)
+  createdAt    DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime  @updatedAt @db.Timestamptz(3)
+
+  @@index([userId, readAt, createdAt])
+}
+
+model OutboxEvent {
+  id          String    @id @default(uuid())
+  kind        String
+  payload     Json
+  actorId     String?
+  actionId    String?
+  runAt       DateTime  @db.Timestamptz(3)
+  processedAt DateTime? @db.Timestamptz(3)
+  cancelledAt DateTime? @db.Timestamptz(3)
+  createdAt   DateTime  @default(now()) @db.Timestamptz(3)
+
+  @@index([processedAt, cancelledAt, runAt])
+}
+
+model JobRun {
+  id        String   @id @default(uuid())
+  jobName   String
+  runDate   DateTime @db.Date
+  scope     String
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  @@unique([jobName, runDate, scope])
+}

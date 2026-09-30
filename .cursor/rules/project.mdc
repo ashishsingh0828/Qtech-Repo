@@ -1,0 +1,166 @@
+---
+description: Qtech Service Hub always-on project rules
+alwaysApply: true
+---
+# Qtech Service Hub - always-on project rules
+
+## Stack and folders
+- npm workspaces: apps/server (Express, Prisma, PostgreSQL), apps/web (Vite,
+  React, Tailwind, TanStack), packages/shared (@app/shared, TS source).
+- Server modules: apps/server/src/modules/<name>/{routes,service,schema}.ts.
+  Web features: apps/web/src/features/<name>. One place per concept:
+  permissions and roles in shared/permissions + shared/roles, metric
+  definitions in shared/metrics, constants in shared/constants.
+- Database: PostgreSQL localhost:2001, database qtech_service_hub, via Prisma.
+  Ports: web 5173, server 4000. The web app calls /api through the Vite proxy.
+
+## Coding rules
+- TypeScript strict, no any, no dead code, no TODOs, no obvious comments.
+- ONLY code and required config. NO test files, mocks, seed data, README, docs.
+  Temporary verification scripts must be deleted afterwards.
+- No unrelated refactors. Do not rename existing API routes.
+- Every screen: skeleton matching the final layout, empty state, error state.
+  Every mutation: pending state, success feedback, failure message.
+
+## API contract
+- All routes under /api, JSON only (except file upload/download).
+- Errors: { error, code, requestId, details? }. Codes/status: VALIDATION 400,
+  UNAUTHENTICATED 401, FORBIDDEN 403, NOT_FOUND 404, CONFLICT 409,
+  PAYLOAD_TOO_LARGE 413, RATE_LIMITED 429, INTERNAL 500. 500 only for real
+  bugs. Missing or expired session is 401, never 500.
+- Wrap every async handler. Validate every body/query/param with zod.
+- Multi-table writes use one prisma.$transaction (row change + mirrored fields
+  + ActivityLog together).
+- Side effects (notifications, outbox, SSE, publishEvent) NEVER make the main
+  write fail: catch and log them separately.
+- Auth cookie qsh_session: httpOnly, SameSite=Lax, Secure only when
+  COOKIE_SECURE=true. DB stores only the sha256 of the token. requireAuth
+  re-checks user.active on every request.
+
+## Data and time
+- Dates over the wire: YYYY-MM-DD for date-only, ISO 8601 for instants.
+  "Today" = current date in APP_TIMEZONE (one helper). Display dates like
+  "07 Apr 2023" and times like "12 Oct 2026, 4:32 PM". Excel dates are read
+  with UTC components (no off-by-one).
+- Row.data (JSON) is the source of truth; mirrored columns on Row are updated
+  in the same transaction as every write and are used for all filters,
+  metrics and counts. Time-dependent flags (overdue, due, expired, expiring)
+  are computed at query time and never stored.
+
+## Roles and capabilities (fixed, not configurable)
+- admin: everything. users, access matrix, import/merge, edit any cell, row
+  add/insert/duplicate/delete, column+group add/rename/move/hide/delete,
+  dataset delete, Trash restore and permanent delete, verify, assign.
+- manager: everything above EXCEPT users, access matrix, permanent delete.
+- validator, service: only edit cells of groups where RoleGroupAccess.canEdit,
+  plus their own actions. NEVER: import, row or column or group changes, dataset
+  delete, Trash, Users, Access, Schema.
+- Capability names: manageUsers, manageAccess, importData, editAnyCell,
+  manageRows, manageStructure, deleteDataset, useTrash, purgeTrash, verify,
+  assign.
+- Actions: validate (validator, manager, admin; validator also needs edit on
+  data_validation); amc / pms / followup (service, manager, admin; need edit on
+  amc / schedule_services / follow_up); calls (service, manager, admin; need
+  edit on complaint or breakdown_calls); verify and assign (manager, admin).
+
+## Group access defaults (validator / service), stored in RoleGroupAccess
+customer_detail: both view. instrument_details: both view. data_validation:
+validator view+edit, service hidden. schedule_services, complaint,
+breakdown_calls, amc, follow_up: service view+edit, validator hidden. Any other
+or custom group: hidden for validator and service until an admin ticks it.
+canEdit implies canView. groupKey is immutable; renaming changes only the
+label. Admin and manager always have full view+edit.
+
+## Hidden means hidden (server enforced)
+For validator/service the API never returns values, labels, columns, activity
+entries, notification field names, search hits or export cells of groups
+without canView. Search, filters, sorting and counts run only on visible
+data. The UI removes (never merely disables) what a role lacks. Derived pills
+workflows need (verified, warranty, AMC lead) may remain visible as computed
+pills.
+
+## Server-managed fields (nobody can type into them; only actions/derivations)
+validated (after Task 6), validated_by, validated_at, verified, verified_by,
+verified_at, amc_status, ack_at, warranty_live, days, next_due_pms, open_calls,
+last_call_date, assigned*.
+
+## Domain definitions (one shared metrics module; computed at query time)
+- needs_validation: validated empty.
+- validation_overdue: validated No AND validation_due < today.
+- pending_verification: validated Yes AND verified != "Verified OK".
+- warranty_expired: end_date < today. expiring_soon: within EXPIRING_DAYS.
+- Effective AMC status: stored Proposal Sent / Acknowledged / Declined, else
+  expired -> "AMC Due", otherwise "Not Due".
+- amc_due: warranty_expired AND effective status "AMC Due" AND (when
+  AMC_REQUIRES_VERIFICATION) verified = "Verified OK". Admin/manager also see
+  an "Unverified expiries" list.
+- Active AMCs: effective status Acknowledged.
+- contract_live: end_date empty or >= today. next_due_pms: earliest scheduled
+  real date (pms:N) whose pm_date:N is empty (mirrored to Row.nextDuePms).
+  pms_overdue: contract_live AND nextDuePms < today. pms_due_soon: contract_live
+  AND nextDuePms within PMS_SOON_DAYS. Assumption: pms:N = scheduled date,
+  pm_date:N = date actually done. Expired-contract rows show PMS as "Lapsed"
+  and are excluded from PMS KPIs, agendas and reminders.
+- followup_due: next_follow_up <= today.
+- days = end_date - start_date in whole days (server computed, read-only,
+  blank if either missing, negative in ruby).
+
+## Constants (packages/shared/src/constants.ts)
+DAILY_VALIDATION_TARGET=20, RECENT_EDIT_HOURS=24, UNDO_SECONDS=8,
+NOTIFY_MERGE_SECONDS=60, TRASH_RETENTION_DAYS=30, EXPIRING_DAYS=30,
+PMS_SOON_DAYS=3, AMC_REQUIRES_VERIFICATION=true, MAX_UPLOAD_MB=25,
+MAX_ROWS=10000.
+
+## Domain events
+Every successful write calls publishEvent({ type, datasetId?, rowId?, actorId,
+... }). Subscribers (realtime, notifications) are added in Task 7.
+
+## Design system: Executive Ivory (quiet luxury, restraint is the luxury)
+- Variables: canvas #FAF9F7, surface #FFFFFF, surface-2 #F4F2EE, hairline
+  #E8E4DD, ink #14171F, ink-2 #4A4F5C, muted #7B7F8B, navy #0E1726 (sidebar,
+  primary buttons), navy-2 #172236, gold #B8955A (ONLY accent: focus ring,
+  active tab underline, selected outline, nav indicator, edit markers, small
+  icons), gold-soft #F3EBDD. Pills (text/bg): emerald #1F6F4F/#E6F2EC, amber
+  #96620F/#FBF0DA, ruby #A63A38/#F8E6E5, sapphire #2A5698/#E6EDF8, stone
+  #5C616D/#EEEDEA. Group tints: #F1EEE8 #E9EFEA #E8EDF3 #F3ECE3 #EFE9EF #E6EFEE
+  #F1EBE6 #ECEBF3.
+- Type: "Instrument Serif" only for page titles, big numerals, login. "Inter"
+  elsewhere (13px tables, 14px UI, tabular-nums for numbers and dates). Group
+  labels 11px uppercase, tracking 0.06em. Fonts self-hosted.
+- Cards radius 12, controls radius 8, 1px hairline, no shadow at rest;
+  floating layers only get a soft shadow. Primary button navy with ivory text;
+  secondary white with hairline; gold is never a large fill. Motion 160ms ease;
+  respect prefers-reduced-motion. Styled checkboxes, selects, date pickers (no
+  raw browser controls). Empty states: one-color line illustration + one
+  sentence + one action. Toasts bottom-right (top on mobile), navy.
+- Forbidden: neon or saturated colors, gradients, glassmorphism, emojis, mixed
+  icon sets, shadows everywhere, small gold text on white, more than one accent.
+  Body text contrast >= 4.5:1. One icon set (lucide, 1.5px stroke).
+
+## Layout laws (hard rules)
+- Shell is a CSS grid: sidebar | main. Main = topbar 56px + scrollable content.
+  Only the content area scrolls vertically. The PAGE never scrolls horizontally
+  from 320px up; wide tables scroll inside their own container.
+- Flex/grid children holding text get min-w-0 plus truncate/line-clamp. No fixed
+  widths on text containers. Content max-width 1440px; padding 32 desktop / 24
+  tablet / 16 mobile.
+- z-index variables only: base 0, sticky 10, topbar 20, scrim 40, drawer 50,
+  popover 60, dialog 70, toast 80. Popovers, dialogs, dropdowns, tooltips,
+  drawers, toasts render in portals. No ad-hoc z-index values.
+- Sticky offsets from CSS variables (--topbar-h, --banner-h, --subheader-h).
+- Drawers OVERLAY with a scrim and never push content: 480px (max 92vw); full
+  screen sheet with a sticky bottom action bar on mobile.
+- Breakpoints: >=1280 desktop (sidebar 232px); 768-1279 tablet (64px icon rail
+  that expands as an overlay); <768 mobile (no sidebar, bottom nav max 5 items,
+  tables become card lists, dialogs become bottom sheets).
+- 44px minimum tap targets on touch; hover-only actions need a touch
+  alternative. 8px spacing scale; card padding 20; gaps 16/24. One PageHeader
+  pattern: serif title 28px, one-line subtitle, actions on the right (wrapping
+  below on small screens). Skeletons match final dimensions.
+
+## Definition of done for every task
+Run typecheck, lint and build and fix everything you introduced. Run the app and
+exercise the task's VERIFY list (curl and the running UI). Fix failures. Delete
+temporary scripts. Then STOP, print "Task N complete" with changed files and
+manual steps, and wait for me to say "continue". Never start the next task
+alone.

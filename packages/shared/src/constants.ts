@@ -1,0 +1,10 @@
+export const DAILY_VALIDATION_TARGET = 20;
+export const RECENT_EDIT_HOURS = 24;
+export const UNDO_SECONDS = 8;
+export const NOTIFY_MERGE_SECONDS = 60;
+export const TRASH_RETENTION_DAYS = 30;
+export const EXPIRING_DAYS = 30;
+export const PMS_SOON_DAYS = 3;
+export const AMC_REQUIRES_VERIFICATION = true;
+export const MAX_UPLOAD_MB = 25;
+export const MAX_ROWS = 10000;

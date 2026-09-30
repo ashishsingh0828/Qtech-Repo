@@ -1,0 +1,125 @@
+@import "@fontsource/inter/latin-400.css";
+@import "@fontsource/inter/latin-500.css";
+@import "@fontsource/inter/latin-600.css";
+@import "@fontsource/instrument-serif/latin-400.css";
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --canvas: #faf9f7;
+  --surface: #ffffff;
+  --surface-2: #f4f2ee;
+  --hairline: #e8e4dd;
+  --ink: #14171f;
+  --ink-2: #4a4f5c;
+  --muted: #7b7f8b;
+  --navy: #0e1726;
+  --navy-2: #172236;
+  --gold: #b8955a;
+  --gold-soft: #f3ebdd;
+  --emerald: #1f6f4f;
+  --emerald-bg: #e6f2ec;
+  --amber: #96620f;
+  --amber-bg: #fbf0da;
+  --ruby: #a63a38;
+  --ruby-bg: #f8e6e5;
+  --sapphire: #2a5698;
+  --sapphire-bg: #e6edf8;
+  --stone: #5c616d;
+  --stone-bg: #eeedea;
+  --tint-1: #f1eee8;
+  --tint-2: #e9efea;
+  --tint-3: #e8edf3;
+  --tint-4: #f3ece3;
+  --tint-5: #efe9ef;
+  --tint-6: #e6efee;
+  --tint-7: #f1ebe6;
+  --tint-8: #ecebf3;
+  --topbar-h: 56px;
+  --banner-h: 0px;
+  --subheader-h: 0px;
+  --sidebar-w: 232px;
+  --rail-w: 64px;
+  --z-base: 0;
+  --z-sticky: 10;
+  --z-topbar: 20;
+  --z-scrim: 40;
+  --z-drawer: 50;
+  --z-popover: 60;
+  --z-dialog: 70;
+  --z-toast: 80;
+  --motion: 160ms;
+  color-scheme: light;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+html,
+body {
+  overflow-x: clip;
+}
+
+body {
+  margin: 0;
+  background: var(--canvas);
+  color: var(--ink);
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--hairline) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: var(--hairline);
+  border-radius: 999px;
+}
+
+:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+}
+
+.group-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+[data-sonner-toaster] {
+  z-index: var(--z-toast) !important;
+}
+
+@media (pointer: coarse) {
+  .tap {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}

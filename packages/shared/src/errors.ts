@@ -1,0 +1,23 @@
+export const ERROR_CODES = [
+  "VALIDATION",
+  "UNAUTHENTICATED",
+  "FORBIDDEN",
+  "NOT_FOUND",
+  "CONFLICT",
+  "PAYLOAD_TOO_LARGE",
+  "RATE_LIMITED",
+  "INTERNAL",
+] as const;
+
+export type ErrorCode = (typeof ERROR_CODES)[number];
+
+export const ERROR_STATUS: Record<ErrorCode, number> = {
+  VALIDATION: 400,
+  UNAUTHENTICATED: 401,
+  FORBIDDEN: 403,
+  NOT_FOUND: 404,
+  CONFLICT: 409,
+  PAYLOAD_TOO_LARGE: 413,
+  RATE_LIMITED: 429,
+  INTERNAL: 500,
+};
