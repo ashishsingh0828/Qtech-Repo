@@ -13,6 +13,7 @@
     "dev": "concurrently -n server,web -c auto \"npm run dev -w @app/server\" \"npm run dev -w @app/web\"",
     "build": "npm run build -w @app/server && npm run build -w @app/web",
     "start": "npm run start -w @app/server",
+    "start:prod": "npm run db:deploy -w @app/server && npm run start -w @app/server",
     "typecheck": "npm run typecheck -w @app/shared && npm run typecheck -w @app/server && npm run typecheck -w @app/web",
     "lint": "eslint .",
     "db:migrate": "npm run db:migrate -w @app/server",

@@ -1,0 +1,38 @@
+services:
+  - type: web
+    name: qtech-service-hub
+    runtime: node
+    plan: free
+    branch: cursor/foundation-scaffold-1491
+    buildCommand: npm install --include=dev && npm run build
+    startCommand: npm run start:prod
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: "22.15.0"
+      - key: NODE_ENV
+        value: production
+      - key: COOKIE_SECURE
+        value: "true"
+      - key: APP_NAME
+        value: Qtech Service Hub
+      - key: APP_TIMEZONE
+        value: Asia/Kolkata
+      - key: DEFAULT_COUNTRY_CODE
+        value: "+91"
+      - key: ADMIN_NAME
+        value: Admin
+      - key: ADMIN_EMAIL
+        value: admin@example.com
+      - key: ADMIN_PASSWORD
+        value: change-me
+      - key: DATABASE_URL
+        fromDatabase:
+          name: qtech-db
+          property: connectionString
+
+databases:
+  - name: qtech-db
+    databaseName: qtech_service_hub
+    plan: free
+    postgresMajorVersion: "16"

@@ -8,8 +8,9 @@
     "build": "tsup",
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit",
-    "postinstall": "node --env-file=../../.env ../../node_modules/prisma/build/index.js generate",
+    "postinstall": "node --input-type=commonjs -e \"const fs=require('node:fs'); if(fs.existsSync('../../.env')) process.loadEnvFile('../../.env'); if(!process.env.DATABASE_URL) process.env.DATABASE_URL='postgresql://localhost:5432/qtech'; require('node:child_process').execFileSync(process.execPath,['../../node_modules/prisma/build/index.js','generate'],{stdio:'inherit',env:process.env})\"",
     "db:migrate": "node --env-file=../../.env ../../node_modules/prisma/build/index.js migrate dev",
+    "db:deploy": "node ../../node_modules/prisma/build/index.js migrate deploy",
     "db:studio": "node --env-file=../../.env ../../node_modules/prisma/build/index.js studio"
   },
   "dependencies": {

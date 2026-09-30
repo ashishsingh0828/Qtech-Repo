@@ -10,7 +10,8 @@ const envSchema = z.object({
   DATABASE_URL: z.string().min(1),
   PORT: z.coerce.number().int().positive(),
   NODE_ENV: z.enum(["development", "production", "test"]),
-  CLIENT_ORIGIN: z.string().url(),
+  CLIENT_ORIGIN: z.string().url().optional(),
+  RENDER_EXTERNAL_URL: z.string().url().optional(),
   COOKIE_SECURE: z.enum(["true", "false"]).transform((value) => value === "true"),
   APP_NAME: z.string().min(1),
   APP_TIMEZONE: z.string().min(1),
@@ -37,4 +38,10 @@ if (!parsed.success) {
   process.exit(1);
 }
 
-export const env = parsed.data;
+const clientOrigin = parsed.data.CLIENT_ORIGIN ?? parsed.data.RENDER_EXTERNAL_URL;
+if (!clientOrigin) {
+  console.error("Invalid environment variables:\n- CLIENT_ORIGIN: required");
+  process.exit(1);
+}
+
+export const env = { ...parsed.data, CLIENT_ORIGIN: clientOrigin };
