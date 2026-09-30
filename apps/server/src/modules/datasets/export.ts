@@ -1,5 +1,5 @@
 import type { DatasetColumn, DatasetSchema, Permissions } from "@app/shared";
-import { canViewGroup } from "@app/shared";
+import { canViewGroup, normalizeGroupKey } from "@app/shared";
 import { Workbook, type Cell } from "exceljs";
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -43,6 +43,20 @@ export async function buildExportWorkbook(
       writeCell(sheet.getCell(rowIndex + 3, index + 1), column, data[column.key]);
     });
   });
+
+  const customerIndex = columns.findIndex(
+    (column) =>
+      column.key === "customer_name" ||
+      column.semantic === "customer_name" ||
+      normalizeGroupKey(column.label) === "customer_name",
+  );
+  sheet.views = [
+    {
+      state: "frozen",
+      xSplit: customerIndex >= 0 ? customerIndex + 1 : 0,
+      ySplit: 2,
+    },
+  ];
 
   const output = await workbook.xlsx.writeBuffer();
   return Buffer.from(output);

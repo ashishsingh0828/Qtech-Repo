@@ -164,6 +164,7 @@ function walkSchema(value: unknown, visit: (groupKey: string, label: string | un
   }
   if (typeof value !== "object" || value === null) return;
   const record = value as Record<string, unknown>;
+  if (typeof record.deletedAt === "string" && record.deletedAt.length > 0) return;
   if (typeof record.groupKey === "string") {
     const label = typeof record.label === "string" && record.label.trim().length > 0 ? record.label.trim() : undefined;
     visit(record.groupKey, label);

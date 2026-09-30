@@ -32,6 +32,7 @@ export const datasetGroupSchema = z.object({
   order: z.number().int(),
   tint: z.string().min(1),
   deletedAt: z.string().nullable(),
+  deletedByName: z.string().nullable().optional(),
 });
 
 export const datasetColumnSchema = z.object({
@@ -48,6 +49,7 @@ export const datasetColumnSchema = z.object({
   hidden: z.boolean(),
   options: z.array(z.string()),
   deletedAt: z.string().nullable(),
+  deletedByName: z.string().nullable().optional(),
 });
 
 export const datasetSchemaSchema = z.object({

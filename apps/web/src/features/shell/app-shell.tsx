@@ -1,6 +1,6 @@
 import type { NavIcon, NavItem } from "@app/shared";
 import { ROLE_REGISTRY } from "@app/shared";
-import { LogOut, Menu, Rows3, Shield, Table, Users, X } from "lucide-react";
+import { LogOut, Menu, Rows3, Shield, Table, Trash2, Users, X } from "lucide-react";
 import { useEffect, useState, type ComponentType } from "react";
 import { createPortal } from "react-dom";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
@@ -19,6 +19,7 @@ import { DatasetSwitcher } from "../records/dataset-switcher";
 const ICONS: Record<NavIcon, ComponentType<{ className?: string; strokeWidth?: number }>> = {
   rows: Rows3,
   table: Table,
+  trash: Trash2,
   users: Users,
   shield: Shield,
 };

@@ -1,5 +1,6 @@
-import type { DatasetColumn, DatasetDetail, RecentEdit, RowProjection } from "@app/shared";
+import type { ColumnType, DatasetColumn, DatasetDetail, RecentEdit, RowProjection } from "@app/shared";
 import {
+  COLUMN_TYPES,
   RECENT_EDIT_HOURS,
   ROLE_REGISTRY,
   canEditGroup,
@@ -16,12 +17,24 @@ import {
   Badge,
   Button,
   Checkbox,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
   EmptyState,
   Input,
+  Label,
   PageHeader,
   Popover,
   PopoverContent,
   PopoverTrigger,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
   Skeleton,
   Spinner,
   Tabs,
@@ -73,7 +86,11 @@ export function RecordsPage() {
   const [saving, setSaving] = useState(false);
   const [columnQuery, setColumnQuery] = useState("");
   const canManage = hasCapability(user.role, "manageRows");
+  const canStructure = hasCapability(user.role, "manageStructure");
   const canRestore = user.role === "admin" || user.role === "manager";
+  const [bannerDismissed, setBannerDismissed] = useState(false);
+  const [insertAt, setInsertAt] = useState<{ column: DatasetColumn; side: "left" | "right" } | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<DatasetColumn | null>(null);
   const showAdvanced = canRestore;
 
   const datasetQuery = useQuery({
@@ -98,9 +115,10 @@ export function RecordsPage() {
 
   useEffect(() => {
     if (!detail) return;
-    if (detail.schema.groups.some((group) => group.id === groupId)) return;
-    const editable = detail.schema.groups.find((group) => canEditGroup(permissions.groupAccess, group.groupKey));
-    setGroupId(editable?.id ?? detail.schema.groups[0]?.id ?? "");
+    const usable = detail.schema.groups.filter((group) => detail.schema.columns.some((column) => column.groupId === group.id));
+    if (usable.some((group) => group.id === groupId)) return;
+    const editable = usable.find((group) => canEditGroup(permissions.groupAccess, group.groupKey));
+    setGroupId(editable?.id ?? usable[0]?.id ?? "");
   }, [detail, groupId, permissions.groupAccess]);
 
   useEffect(() => {
@@ -312,8 +330,10 @@ export function RecordsPage() {
   }
 
   const activeRow = sourceRows.find((row) => row.id === active?.rowId);
+  const displayGroups = detail.schema.groups.filter((group) => detail.schema.columns.some((column) => column.groupId === group.id));
+  const autoNamedCount = detail.schema.columns.filter((column) => column.autoNamed).length;
   const groupColumns = detail.schema.columns.filter((column) => column.groupId === groupId && !hidden.has(column.key));
-  const visibleGroups = detail.schema.groups.length;
+  const visibleGroups = displayGroups.length;
   const visibleColumnCount = detail.schema.columns.filter((column) => !hidden.has(column.key)).length;
 
   return (
@@ -359,7 +379,17 @@ export function RecordsPage() {
           </>
         }
       />
-      {detail.schema.groups.length === 0 ? (
+      {canStructure && autoNamedCount > 0 && !bannerDismissed ? (
+        <div className="flex min-w-0 items-start justify-between gap-3 rounded-control border border-hairline bg-gold-soft px-3 py-2 text-sm text-ink">
+          <p>
+            {autoNamedCount} columns had no header and were auto-named. Double-click a header to rename
+          </p>
+          <button type="button" className="min-h-11 shrink-0 px-2" onClick={() => setBannerDismissed(true)}>
+            Dismiss
+          </button>
+        </div>
+      ) : null}
+      {displayGroups.length === 0 ? (
         <div className="rounded-card border border-hairline bg-surface">
           <EmptyState message="Nothing in this dataset is visible to your role." />
         </div>
@@ -367,7 +397,7 @@ export function RecordsPage() {
         <>
           <Tabs value={groupId} onValueChange={setGroupId}>
             <TabsList>
-              {detail.schema.groups.map((group) => {
+              {displayGroups.map((group) => {
                 const count = detail.schema.columns.filter((column) => column.groupId === group.id).length;
                 const locked = !canEditGroup(permissions.groupAccess, group.groupKey);
                 return (
@@ -493,7 +523,7 @@ export function RecordsPage() {
               allRows={sourceRows}
               pinned={layout.pinned}
               scrollColumns={layout.scroll}
-              groups={detail.schema.groups}
+              groups={displayGroups}
               advanced={advanced}
               rowHeight={density === "compact" ? 32 : 40}
               selectedRows={selected}
@@ -567,6 +597,26 @@ export function RecordsPage() {
               }}
               onReadOnly={deny}
               onRange={onRange}
+              canStructure={canStructure}
+              onRenameColumn={(column, label) => void structure(`/columns/${encodeURIComponent(column.key)}`, "PATCH", { label }, "Column renamed.")}
+              onInsertColumn={(column, side) => setInsertAt({ column, side })}
+              onMoveColumn={(column, direction) => {
+                const ordered = [...detail.schema.columns].sort((left, right) => left.order - right.order);
+                const index = ordered.findIndex((item) => item.key === column.key);
+                const neighbor = ordered[direction === "left" ? index - 1 : index + 1];
+                if (!neighbor) return;
+                const body = direction === "left" ? { beforeKey: neighbor.key } : { afterKey: neighbor.key };
+                void structure(`/columns/${encodeURIComponent(column.key)}/move`, "POST", body, "Column moved.");
+              }}
+              onHideColumn={(column) => {
+                setHidden((current) => {
+                  const next = new Set(current);
+                  next.add(column.key);
+                  return next;
+                });
+                void structure(`/columns/${encodeURIComponent(column.key)}`, "PATCH", { hidden: true }, "Column hidden.");
+              }}
+              onDeleteColumn={setDeleteTarget}
             />
           </div>
           <MobileCards
@@ -609,8 +659,65 @@ export function RecordsPage() {
         </div>
       ) : null}
       <CellMenuHost />
+      <InsertColumnDialog
+        target={insertAt}
+        onOpenChange={(open) => {
+          if (!open) setInsertAt(null);
+        }}
+        onCreate={async (label, type, options) => {
+          if (!insertAt) return false;
+          const body = {
+            label,
+            type,
+            groupId: insertAt.column.groupId,
+            options,
+            ...(insertAt.side === "left" ? { beforeKey: insertAt.column.key } : { afterKey: insertAt.column.key }),
+          };
+          const saved = await structure("/columns", "POST", body, "Column added.");
+          if (saved) setInsertAt(null);
+          return saved;
+        }}
+      />
+      <Dialog open={deleteTarget != null} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete column</DialogTitle>
+            <DialogDescription>Values stay in each row for 30 days. You can restore this column from Trash.</DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="secondary" onClick={() => setDeleteTarget(null)}>
+              Cancel
+            </Button>
+            <Button
+              className="bg-ruby text-canvas hover:bg-ruby"
+              onClick={() => {
+                if (!deleteTarget) return;
+                const key = deleteTarget.key;
+                void structure(`/columns/${encodeURIComponent(key)}`, "DELETE", undefined, "Column moved to Trash.").then((saved) => {
+                  if (saved) setDeleteTarget(null);
+                });
+              }}
+            >
+              Delete column
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
+
+  async function structure(path: string, method: string, body: unknown, message: string): Promise<boolean> {
+    try {
+      await api(`/api/datasets/${datasetId}${path}`, { method, body });
+      await queryClient.invalidateQueries({ queryKey: ["dataset", datasetId] });
+      await queryClient.invalidateQueries({ queryKey: ["dataset-rows", datasetId] });
+      toast.success(message);
+      return true;
+    } catch (error) {
+      if (!isUnauthenticated(error)) toast.error(errorText(error, "Could not update the column."));
+      return false;
+    }
+  }
 
   function chooseDensity(next: Density) {
     setDensity(next);
@@ -687,6 +794,81 @@ function isProjection(value: unknown): value is RowProjection {
   if (typeof value !== "object" || value === null) return false;
   const record = value as Record<string, unknown>;
   return typeof record.id === "string" && typeof record.version === "number" && typeof record.values === "object" && record.values !== null && typeof record.updatedByName === "string";
+}
+
+function InsertColumnDialog({
+  target,
+  onOpenChange,
+  onCreate,
+}: {
+  target: { column: DatasetColumn; side: "left" | "right" } | null;
+  onOpenChange: (open: boolean) => void;
+  onCreate: (label: string, type: ColumnType, options?: string[]) => Promise<boolean>;
+}) {
+  const [label, setLabel] = useState("");
+  const [type, setType] = useState<ColumnType>("text");
+  const [options, setOptions] = useState("Yes, No");
+  const [saving, setSaving] = useState(false);
+  const needsOptions = type === "yesno" || type === "status" || type === "category";
+
+  return (
+    <Dialog
+      open={target != null}
+      onOpenChange={(open) => {
+        if (!open) {
+          setLabel("");
+          setType("text");
+        }
+        onOpenChange(open);
+      }}
+    >
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{target?.side === "left" ? "Insert column left" : "Insert column right"}</DialogTitle>
+          <DialogDescription>The new column is added beside {target?.column.label ?? "this column"}.</DialogDescription>
+        </DialogHeader>
+        <div className="flex flex-col gap-3 px-5 py-2">
+          <Label htmlFor="insert-label">Label</Label>
+          <Input id="insert-label" value={label} onChange={(event) => setLabel(event.target.value)} />
+          <Label>Type</Label>
+          <Select value={type} onValueChange={(value) => setType(value as ColumnType)}>
+            <SelectTrigger aria-label="Column type">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {COLUMN_TYPES.map((item) => (
+                <SelectItem key={item} value={item}>
+                  {item}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {needsOptions ? (
+            <>
+              <Label htmlFor="insert-options">Options</Label>
+              <Input id="insert-options" value={options} onChange={(event) => setOptions(event.target.value)} />
+            </>
+          ) : null}
+        </div>
+        <DialogFooter>
+          <Button variant="secondary" disabled={saving} onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button
+            disabled={saving || !label.trim()}
+            onClick={() => {
+              setSaving(true);
+              const parsed = needsOptions ? options.split(",").map((item) => item.trim()).filter(Boolean) : undefined;
+              void onCreate(label, type, parsed).finally(() => setSaving(false));
+            }}
+          >
+            {saving ? <Spinner /> : null}
+            Add column
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
 }
 
 function RecordsSkeleton() {

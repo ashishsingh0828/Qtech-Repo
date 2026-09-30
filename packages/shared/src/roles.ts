@@ -6,7 +6,7 @@ export function isRole(value: string): value is Role {
   return (ROLES as readonly string[]).includes(value);
 }
 
-export const NAV_ICONS = ["rows", "table", "users", "shield"] as const;
+export const NAV_ICONS = ["rows", "table", "trash", "users", "shield"] as const;
 
 export type NavIcon = (typeof NAV_ICONS)[number];
 
@@ -30,6 +30,7 @@ export const ROLE_REGISTRY: Record<Role, RoleDefinition> = {
     nav: [
       { id: "records", label: "Records", icon: "rows", path: "/records" },
       { id: "datasets", label: "Datasets", icon: "table", path: "/datasets" },
+      { id: "trash", label: "Trash", icon: "trash", path: "/trash" },
       { id: "team", label: "Team", icon: "users", path: "/team" },
       { id: "access", label: "Access", icon: "shield", path: "/access" },
     ],
@@ -40,6 +41,7 @@ export const ROLE_REGISTRY: Record<Role, RoleDefinition> = {
     nav: [
       { id: "records", label: "Records", icon: "rows", path: "/records" },
       { id: "datasets", label: "Datasets", icon: "table", path: "/datasets" },
+      { id: "trash", label: "Trash", icon: "trash", path: "/trash" },
     ],
   },
   validator: {
