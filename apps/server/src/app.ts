@@ -16,6 +16,7 @@ import { eventsRouter } from "./modules/events/routes";
 import { notificationsRouter } from "./modules/notifications/routes";
 import { trashRouter } from "./modules/trash/routes";
 import { usersRouter } from "./modules/users/routes";
+import { activityRouter, metricsRouter, searchRouter, teamRouter, workspaceRouter } from "./modules/workspace/routes";
 import { healthRouter } from "./routes/health";
 import { apiNotFound } from "./routes/notFound";
 
@@ -52,6 +53,11 @@ export function createApp() {
   app.use("/api/datasets", datasetsRouter);
   app.use("/api/trash", trashRouter);
   app.use("/api/access", accessRouter);
+  app.use("/api/metrics", metricsRouter);
+  app.use("/api/team", teamRouter);
+  app.use("/api/activity", activityRouter);
+  app.use("/api/search", searchRouter);
+  app.use("/api/workspace", workspaceRouter);
 
   if (env.NODE_ENV === "production") {
     app.use(express.static(webDist, { index: false }));

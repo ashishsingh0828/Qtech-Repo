@@ -23,7 +23,12 @@ authRouter.post(
         ip: req.ip || "unknown",
       });
       setSessionCookie(res, result.token);
-      res.status(200).json({ user: result.user, permissions: result.permissions, countryCode: env.DEFAULT_COUNTRY_CODE });
+      res.status(200).json({
+        user: result.user,
+        permissions: result.permissions,
+        countryCode: env.DEFAULT_COUNTRY_CODE,
+        timeZone: env.APP_TIMEZONE,
+      });
     } catch (error) {
       const retryAfter = readRetryAfterSeconds(error);
       if (retryAfter !== undefined) res.setHeader("Retry-After", String(retryAfter));
@@ -49,7 +54,7 @@ authRouter.get(
   asyncHandler(async (req, res) => {
     const user = currentUser(req);
     const permissions = await permissionsFor(user.role);
-    res.status(200).json({ user, permissions, countryCode: env.DEFAULT_COUNTRY_CODE });
+    res.status(200).json({ user, permissions, countryCode: env.DEFAULT_COUNTRY_CODE, timeZone: env.APP_TIMEZONE });
   }),
 );
 

@@ -1,6 +1,6 @@
 import type { NavIcon, NavItem } from "@app/shared";
 import { ROLE_REGISTRY } from "@app/shared";
-import { LogOut, Menu, Rows3, Shield, Table, Trash2, Users, X } from "lucide-react";
+import { LogOut, Menu, Rows3, Shield, Table, Trash2, Users, X, LayoutDashboard, Columns3, ScrollText, Ellipsis } from "lucide-react";
 import { useEffect, useState, type ComponentType } from "react";
 import { createPortal } from "react-dom";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
@@ -17,13 +17,18 @@ import { endSession } from "../auth/session";
 import { NotificationBell } from "../notifications/bell";
 import { DatasetSwitcher } from "../records/dataset-switcher";
 import { LiveStatus, RealtimeProvider } from "../realtime/realtime";
+import { CommandPalette } from "../workspace/command-palette";
+import { getActiveKey, setActiveKey } from "../workspace/keyboard";
 
 const ICONS: Record<NavIcon, ComponentType<{ className?: string; strokeWidth?: number }>> = {
+  home: LayoutDashboard,
   rows: Rows3,
   table: Table,
+  schema: Columns3,
   trash: Trash2,
   users: Users,
   shield: Shield,
+  activity: ScrollText,
 };
 
 const ROLE_TONE: Record<string, PillTone> = {
@@ -42,10 +47,54 @@ export function AppShell() {
   const [railOpen, setRailOpen] = useState(false);
   const [passwordOpen, setPasswordOpen] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
 
   useEffect(() => {
     setRailOpen(false);
   }, [location.pathname]);
+
+  useEffect(() => {
+    function onKey(event: KeyboardEvent) {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setPaletteOpen(true);
+        return;
+      }
+      const target = event.target;
+      if (target instanceof HTMLElement && target.closest("input, textarea, select, [contenteditable]")) return;
+      if (event.key === "/" && !event.metaKey && !event.ctrlKey && !event.altKey) {
+        const box = document.querySelector<HTMLElement>("[data-search]");
+        if (!box) return;
+        event.preventDefault();
+        box.focus();
+        return;
+      }
+      const typingKey = event.key === "j" || event.key === "J" || event.key === "k" || event.key === "K" || event.key === "Enter";
+      if (!typingKey || event.metaKey || event.ctrlKey || event.altKey) return;
+      const cards = [...document.querySelectorAll<HTMLElement>("[data-work-card]")];
+      if (cards.length === 0) return;
+      if (event.key === "Enter") {
+        if (target instanceof HTMLElement && target.closest("button, a")) return;
+        const current = cards.find((card) => card.dataset.cardKey === getActiveKey()) ?? cards[0];
+        const datasetId = current?.dataset.datasetId;
+        const rowId = current?.dataset.rowId;
+        if (!datasetId || !rowId) return;
+        event.preventDefault();
+        void navigate(`/records/${datasetId}?row=${rowId}`);
+        return;
+      }
+      event.preventDefault();
+      const index = cards.findIndex((card) => card.dataset.cardKey === getActiveKey());
+      const next = event.key.toLowerCase() === "j" ? Math.min(cards.length - 1, index < 0 ? 0 : index + 1) : Math.max(0, index < 0 ? 0 : index - 1);
+      const card = cards[next];
+      if (!card?.dataset.cardKey) return;
+      setActiveKey(card.dataset.cardKey);
+      card.scrollIntoView({ block: "nearest" });
+      card.focus();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [navigate]);
 
   async function onLogout() {
     setSigningOut(true);
@@ -120,6 +169,7 @@ export function AppShell() {
         </div>
       </div>
       {items.length > 0 ? <BottomNav items={items} /> : null}
+      <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
       {railOpen
         ? createPortal(
             <div className="xl:hidden">
@@ -201,6 +251,7 @@ function NavItemLink({ item, collapsed }: { item: NavItem; collapsed: boolean })
   return (
     <NavLink
       to={item.path}
+      end={item.path === "/"}
       className={({ isActive }) =>
         cn(
           "relative flex min-h-11 min-w-0 items-center gap-3 rounded-control px-3 text-sm text-canvas hover:bg-navy-2",
@@ -216,31 +267,74 @@ function NavItemLink({ item, collapsed }: { item: NavItem; collapsed: boolean })
 }
 
 function BottomNav({ items }: { items: readonly NavItem[] }) {
+  const [more, setMore] = useState(false);
+  const overflow = items.length > 5;
+  const primary = overflow ? items.slice(0, 4) : items;
+  const extra = overflow ? items.slice(4) : [];
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-topbar flex h-16 border-t border-hairline bg-surface md:hidden">
-      {items.slice(0, 5).map((item) => {
-        const Icon = ICONS[item.icon];
-        return (
-          <NavLink
-            key={item.id}
-            to={item.path}
-            className={({ isActive }) =>
-              cn(
-                "flex min-w-0 flex-1 flex-col items-center justify-center gap-1 text-xs",
-                isActive ? "text-ink" : "text-ink-2",
-              )
-            }
-          >
-            {({ isActive }) => (
-              <>
-                <span className={cn("h-0.5 w-8", isActive ? "bg-gold" : "bg-transparent")} />
-                <Icon className="size-4" strokeWidth={1.5} />
-                <span className="max-w-full truncate px-1">{item.label}</span>
-              </>
-            )}
-          </NavLink>
-        );
-      })}
-    </nav>
+    <>
+      <nav className="fixed inset-x-0 bottom-0 z-topbar flex h-16 border-t border-hairline bg-surface md:hidden">
+        {primary.map((item) => (
+          <BottomLink key={item.id} item={item} />
+        ))}
+        {overflow ? (
+          <button type="button" className="flex min-w-0 flex-1 flex-col items-center justify-center gap-1 text-xs text-ink-2" onClick={() => setMore(true)}>
+            <span className="h-0.5 w-8 bg-transparent" />
+            <Ellipsis className="size-4" strokeWidth={1.5} />
+            <span className="max-w-full truncate px-1">More</span>
+          </button>
+        ) : null}
+      </nav>
+      {overflow ? (
+        <div className="md:hidden">
+          <MoreSheet open={more} items={extra} onClose={() => setMore(false)} />
+        </div>
+      ) : null}
+    </>
+  );
+}
+
+function BottomLink({ item }: { item: NavItem }) {
+  const Icon = ICONS[item.icon];
+  return (
+    <NavLink
+      to={item.path}
+      end={item.path === "/"}
+      className={({ isActive }) =>
+        cn("flex min-w-0 flex-1 flex-col items-center justify-center gap-1 text-xs", isActive ? "text-ink" : "text-ink-2")
+      }
+    >
+      {({ isActive }) => (
+        <>
+          <span className={cn("h-0.5 w-8", isActive ? "bg-gold" : "bg-transparent")} />
+          <Icon className="size-4" strokeWidth={1.5} />
+          <span className="max-w-full truncate px-1">{item.label}</span>
+        </>
+      )}
+    </NavLink>
+  );
+}
+
+function MoreSheet({ open, items, onClose }: { open: boolean; items: readonly NavItem[]; onClose: () => void }) {
+  return (
+    <div className={cn("fixed inset-0 z-scrim bg-navy/40", open ? "block" : "hidden")} onClick={onClose}>
+      <div className="absolute inset-x-0 bottom-16 rounded-t-card border border-hairline bg-surface p-3" onClick={(event) => event.stopPropagation()}>
+        {items.map((item) => {
+          const Icon = ICONS[item.icon];
+          return (
+            <NavLink
+              key={item.id}
+              to={item.path}
+              end={item.path === "/"}
+              className="flex min-h-11 items-center gap-3 rounded-control px-3 text-sm text-ink"
+              onClick={onClose}
+            >
+              <Icon className="size-4" strokeWidth={1.5} />
+              {item.label}
+            </NavLink>
+          );
+        })}
+      </div>
+    </div>
   );
 }

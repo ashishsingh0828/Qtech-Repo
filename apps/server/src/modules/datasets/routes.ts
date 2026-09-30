@@ -6,6 +6,8 @@ import { asyncHandler } from "../../lib/asyncHandler";
 import { AppError } from "../../lib/errors";
 import { validate, validated } from "../../lib/validate";
 import { currentUser, requireAuth, requireCapability } from "../../middleware/auth";
+import { healthSchema } from "../workspace/schema";
+import { datasetHealth } from "../workspace/service";
 import { confirmMerge, previewMerge } from "./merge";
 import {
   cellHistory,
@@ -339,6 +341,17 @@ datasetsRouter.delete(
     const { params } = validated<typeof datasetParamsSchema._output>(req);
     await softDeleteDataset(currentUser(req), params.id);
     res.status(200).json({ ok: true });
+  }),
+);
+
+datasetsRouter.get(
+  "/:id/health",
+  requireCapability("manageStructure"),
+  validate(healthSchema),
+  asyncHandler(async (req, res) => {
+    const { params } = validated<typeof healthSchema._output>(req);
+    const health = await datasetHealth(params.id);
+    res.status(200).json(health);
   }),
 );
 

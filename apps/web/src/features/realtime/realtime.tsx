@@ -17,6 +17,15 @@ type RealtimeValue = {
 
 const RealtimeContext = createContext<RealtimeValue | null>(null);
 
+function invalidateWorkspace(): void {
+  void queryClient.invalidateQueries({ queryKey: ["kpis"] });
+  void queryClient.invalidateQueries({ queryKey: ["workspace"] });
+  void queryClient.invalidateQueries({ queryKey: ["health"] });
+  void queryClient.invalidateQueries({ queryKey: ["workload"] });
+  void queryClient.invalidateQueries({ queryKey: ["activity-feed"] });
+  void queryClient.invalidateQueries({ queryKey: ["boards"] });
+}
+
 export function useRealtime(): RealtimeValue {
   const value = useContext(RealtimeContext);
   if (!value) throw new Error("useRealtime must be used within RealtimeProvider");
@@ -84,6 +93,9 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
         void queryClient.invalidateQueries({ queryKey: ["schema", event.datasetId] });
         setRevision((current) => current + 1);
       }
+      if (type === "notification" || event.datasetId || type.includes("import") || type.includes("merged") || type.includes("access")) {
+        invalidateWorkspace();
+      }
       if (type === "dataset.deleted" && event.datasetId) {
         setDeleted((current) => ({ ...current, [event.datasetId as string]: event.actorName || "someone" }));
       }
@@ -114,6 +126,7 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
       void queryClient.invalidateQueries({ queryKey: ["notifications"] });
       void queryClient.invalidateQueries({ queryKey: ["trash"] });
       void queryClient.invalidateQueries({ queryKey: ["dataset"] });
+      invalidateWorkspace();
     }, 60_000);
     return () => window.clearInterval(timer);
   }, [connected]);
