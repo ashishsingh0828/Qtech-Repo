@@ -116,7 +116,7 @@ export function AppShell() {
       </aside>
       <div className="flex min-h-0 min-w-0 flex-col">
         <header className="z-topbar flex h-[var(--topbar-h)] shrink-0 items-center gap-3 border-b border-hairline bg-surface px-4 md:px-6">
-          <NavLink to="/" className="min-w-0 shrink truncate font-serif text-lg text-ink xl:hidden">
+          <NavLink to="/" className="hidden min-w-0 shrink truncate font-serif text-lg text-ink sm:inline xl:hidden">
             {appName}
           </NavLink>
           <DatasetSwitcher />
@@ -163,7 +163,7 @@ export function AppShell() {
           </div>
         </header>
         <div className={cn("min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden", items.length > 0 && "pb-16 md:pb-0")}>
-          <div className="mx-auto flex w-full min-w-0 max-w-content flex-col px-4 py-4 md:px-6 md:py-6 xl:px-8">
+          <div className="mx-auto flex min-h-full w-full min-w-0 max-w-content flex-col px-4 py-4 md:px-6 md:py-6 xl:px-8">
             <Outlet />
           </div>
         </div>

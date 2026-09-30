@@ -1,6 +1,6 @@
 import type { Permissions } from "@app/shared";
 import { canViewGroup } from "@app/shared";
-import { Prisma } from "@prisma/client";
+import type { Prisma } from "@prisma/client";
 import { readFields } from "./payload";
 
 export type NoticeParams = {

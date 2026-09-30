@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { DatasetSchema, PublicUser } from "@app/shared";
 import { TRASH_RETENTION_DAYS, isServerManagedField, parseDatasetSchema } from "@app/shared";
-import { Prisma } from "@prisma/client";
+import type { Prisma } from "@prisma/client";
 import { AppError } from "../../lib/errors";
 import { publishEvent } from "../../lib/events";
 import { logger } from "../../lib/logger";

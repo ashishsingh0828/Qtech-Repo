@@ -157,11 +157,12 @@ export function ManagerDesk() {
                     Service
                   </Button>
                 </div>
-                <Select value={assignee || undefined} onValueChange={setAssignee}>
+                <Select value={assignee || "unassigned"} onValueChange={(value) => setAssignee(value === "unassigned" ? "" : value)}>
                   <SelectTrigger aria-label="Assignee">
                     <SelectValue placeholder="Choose a person" />
                   </SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="unassigned">Choose a person</SelectItem>
                     {people.map((person) => (
                       <SelectItem key={person.id} value={person.id}>
                         {person.name}

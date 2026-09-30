@@ -1,5 +1,5 @@
 import { UNDO_SECONDS } from "@app/shared";
-import { Prisma } from "@prisma/client";
+import type { Prisma } from "@prisma/client";
 import { prisma } from "../../lib/prisma";
 import { type OutboxBody, toJson } from "./payload";
 

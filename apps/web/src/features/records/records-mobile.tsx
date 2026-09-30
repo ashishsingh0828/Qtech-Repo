@@ -62,7 +62,7 @@ export function MobileCards({
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-auto md:hidden">
+    <div className="flex flex-col gap-3 md:hidden">
       {rows.length === 0 ? <p className="text-sm text-ink-2">No rows match.</p> : null}
       {rows.map((row) => {
         const when = formatDistanceToNow(new Date(row.updatedAt), { addSuffix: true });

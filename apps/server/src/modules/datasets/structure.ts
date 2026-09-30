@@ -9,7 +9,7 @@ import {
   normalizeGroupKey,
   parseDatasetSchema,
 } from "@app/shared";
-import { Prisma } from "@prisma/client";
+import type { Prisma } from "@prisma/client";
 import { AppError } from "../../lib/errors";
 import { publishEvent } from "../../lib/events";
 import { logger } from "../../lib/logger";
