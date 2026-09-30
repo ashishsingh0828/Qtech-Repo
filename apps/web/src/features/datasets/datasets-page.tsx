@@ -2,6 +2,7 @@ import type { DatasetSummary } from "@app/shared";
 import { MAX_UPLOAD_MB, hasCapability } from "@app/shared";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useRef, useState, type FormEvent } from "react";
+import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import {
   Button,
@@ -21,11 +22,13 @@ import { errorText, isUnauthenticated } from "../../lib/errors";
 import { formatWhen } from "../../lib/format";
 import { queryClient } from "../../lib/query";
 import { useAuth } from "../auth/auth-gate";
+import { rememberDataset } from "../records/storage";
 
 type DatasetsResponse = { datasets: DatasetSummary[] };
 
 export function DatasetsPage() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const canImport = hasCapability(user.role, "importData");
   const [importOpen, setImportOpen] = useState(false);
   const [exportingId, setExportingId] = useState<string | null>(null);
@@ -113,10 +116,21 @@ export function DatasetsPage() {
                     </td>
                     <td className="whitespace-nowrap px-4 py-3 tabular-nums text-ink-2">{formatWhen(dataset.createdAt)}</td>
                     <td className="px-4 py-3">
-                      <Button size="sm" variant="secondary" disabled={exportingId === dataset.id} onClick={() => void onExport(dataset)}>
-                        {exportingId === dataset.id ? <Spinner /> : null}
-                        Export
-                      </Button>
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          size="sm"
+                          onClick={() => {
+                            rememberDataset(user.id, dataset.id);
+                            void navigate(`/records/${dataset.id}`);
+                          }}
+                        >
+                          Open
+                        </Button>
+                        <Button size="sm" variant="secondary" disabled={exportingId === dataset.id} onClick={() => void onExport(dataset)}>
+                          {exportingId === dataset.id ? <Spinner /> : null}
+                          Export
+                        </Button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -131,10 +145,20 @@ export function DatasetsPage() {
                 <p className="text-sm tabular-nums text-ink-2">{dataset.rowCount} rows</p>
                 <p className="truncate text-sm text-ink-2">{dataset.uploadedByName}</p>
                 <p className="text-sm tabular-nums text-ink-2">{formatWhen(dataset.createdAt)}</p>
-                <Button variant="secondary" disabled={exportingId === dataset.id} onClick={() => void onExport(dataset)}>
-                  {exportingId === dataset.id ? <Spinner /> : null}
-                  Export
-                </Button>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    onClick={() => {
+                      rememberDataset(user.id, dataset.id);
+                      void navigate(`/records/${dataset.id}`);
+                    }}
+                  >
+                    Open
+                  </Button>
+                  <Button variant="secondary" disabled={exportingId === dataset.id} onClick={() => void onExport(dataset)}>
+                    {exportingId === dataset.id ? <Spinner /> : null}
+                    Export
+                  </Button>
+                </div>
               </article>
             ))}
           </div>

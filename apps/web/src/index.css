@@ -102,6 +102,29 @@ body {
   text-transform: uppercase;
 }
 
+.edit-mark::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  border-width: 0 7px 7px 0;
+  border-style: solid;
+  border-color: transparent var(--gold) transparent transparent;
+}
+
+.cell-flash {
+  animation: cell-flash var(--motion) ease;
+}
+
+@keyframes cell-flash {
+  from {
+    background-color: var(--gold-soft);
+  }
+  to {
+    background-color: transparent;
+  }
+}
+
 [data-sonner-toaster] {
   z-index: var(--z-toast) !important;
 }

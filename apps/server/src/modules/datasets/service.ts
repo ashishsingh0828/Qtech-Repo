@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
-import type { DatasetColumn, DatasetSummary, PublicUser } from "@app/shared";
-import { cleanLabel, nextDuePmsDate, parseDatasetSchema } from "@app/shared";
+import type { DatasetSummary, PublicUser } from "@app/shared";
+import { cleanLabel, parseDatasetSchema } from "@app/shared";
 import { Prisma } from "@prisma/client";
 import { permissionsFor } from "../../lib/account";
 import { AppError } from "../../lib/errors";
@@ -8,9 +8,8 @@ import { publishEvent } from "../../lib/events";
 import { logger } from "../../lib/logger";
 import { prisma } from "../../lib/prisma";
 import { buildExportWorkbook } from "./export";
+import { syncMirrorFields } from "./mirrors";
 import { parseWorkbook } from "./parse";
-
-const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 export async function listDatasets(): Promise<DatasetSummary[]> {
   const datasets = await prisma.dataset.findMany({
@@ -63,14 +62,23 @@ export async function importDataset(actor: PublicUser, file: { originalname: str
       for (let index = 0; index < parsed.rows.length; index += 500) {
         const slice = parsed.rows.slice(index, index + 500);
         await tx.row.createMany({
-          data: slice.map((data, offset) => ({
-            datasetId,
-            position: index + offset + 1,
-            data: data as Prisma.InputJsonValue,
-            ...mirrorsFor(data, parsed.schema.columns),
-            updatedById: actor.id,
-            updatedByName: actor.name,
-          })),
+          data: slice.map((rowData, offset) => {
+            const synced = syncMirrorFields(rowData, parsed.schema);
+            return {
+              datasetId,
+              position: index + offset + 1,
+              data: synced.data as Prisma.InputJsonValue,
+              validated: synced.validated,
+              validationDue: synced.validationDue,
+              verified: synced.verified,
+              endDate: synced.endDate,
+              amcStatus: synced.amcStatus,
+              nextFollowUp: synced.nextFollowUp,
+              nextDuePms: synced.nextDuePms,
+              updatedById: actor.id,
+              updatedByName: actor.name,
+            };
+          }),
         });
       }
       await tx.activityLog.create({
@@ -112,7 +120,11 @@ export async function importDataset(actor: PublicUser, file: { originalname: str
   };
 }
 
-export async function exportDataset(actor: PublicUser, datasetId: string): Promise<{ filename: string; body: Buffer }> {
+export async function exportDataset(
+  actor: PublicUser,
+  datasetId: string,
+  rowIds?: string[],
+): Promise<{ filename: string; body: Buffer }> {
   const dataset = await prisma.dataset.findFirst({
     where: { id: datasetId, deletedAt: null },
   });
@@ -120,11 +132,18 @@ export async function exportDataset(actor: PublicUser, datasetId: string): Promi
   const schema = parseDatasetSchema(dataset.schema);
   if (!schema) throw new AppError("INTERNAL", 500, "Dataset schema is invalid.");
   const permissions = await permissionsFor(actor.role);
-  const rows = await prisma.row.findMany({
-    where: { datasetId: dataset.id, deletedAt: null },
-    orderBy: { position: "asc" },
-    select: { data: true },
-  });
+  const rows =
+    rowIds && rowIds.length === 0
+      ? []
+      : await prisma.row.findMany({
+          where: {
+            datasetId: dataset.id,
+            deletedAt: null,
+            ...(rowIds ? { id: { in: rowIds } } : {}),
+          },
+          orderBy: { position: "asc" },
+          select: { data: true },
+        });
   const body = await buildExportWorkbook(schema, rows, permissions.groupAccess);
   return { filename: exportFilename(dataset.name), body };
 }
@@ -138,41 +157,4 @@ function datasetName(filename: string): string {
 function exportFilename(name: string): string {
   const cleaned = name.replace(/[\\/:*?"<>|\r\n]+/g, " ").trim() || "dataset";
   return cleaned.toLowerCase().endsWith(".xlsx") ? cleaned : `${cleaned}.xlsx`;
-}
-
-function mirrorsFor(data: Record<string, string | number | boolean>, columns: DatasetColumn[]) {
-  const dueSource: Record<string, unknown> = { ...data };
-  for (const [key, value] of Object.entries(dueSource)) {
-    if (key.startsWith("pm_date:") && value === "NA") delete dueSource[key];
-  }
-  return {
-    validated: textOrNull(readSemantic(data, columns, "validated")),
-    validationDue: dateOrNull(readSemantic(data, columns, "validation_due")),
-    verified: textOrNull(readSemantic(data, columns, "verified")),
-    endDate: dateOrNull(readSemantic(data, columns, "end_date")),
-    amcStatus: textOrNull(readSemantic(data, columns, "amc_status")),
-    nextFollowUp: dateOrNull(readSemantic(data, columns, "next_follow_up")),
-    nextDuePms: dateOrNull(nextDuePmsDate(dueSource)),
-  };
-}
-
-function readSemantic(
-  data: Record<string, string | number | boolean>,
-  columns: DatasetColumn[],
-  semantic: string,
-): unknown {
-  const column = columns.find((item) => item.semantic === semantic || item.key === semantic);
-  if (!column) return undefined;
-  return data[column.key];
-}
-
-function textOrNull(value: unknown): string | null {
-  if (typeof value === "string" && value.trim()) return value;
-  if (typeof value === "number" && Number.isFinite(value)) return String(value);
-  return null;
-}
-
-function dateOrNull(value: unknown): Date | null {
-  if (typeof value !== "string" || !ISO_DATE.test(value)) return null;
-  return new Date(`${value}T00:00:00.000Z`);
 }

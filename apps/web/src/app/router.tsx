@@ -1,6 +1,8 @@
 import { createBrowserRouter } from "react-router-dom";
 import { AccessPage } from "../features/access/access-page";
 import { DatasetsPage } from "../features/datasets/datasets-page";
+import { RecordsIndexPage } from "../features/records/records-index";
+import { RecordsPage } from "../features/records/records-page";
 import { AuthGate } from "../features/auth/auth-gate";
 import { LoginPage } from "../features/auth/login-page";
 import { AppShell } from "../features/shell/app-shell";
@@ -20,6 +22,8 @@ export const router = createBrowserRouter([
         children: [
           { index: true, element: <WelcomePage /> },
           { path: "datasets", element: <DatasetsPage /> },
+          { path: "records", element: <RecordsIndexPage /> },
+          { path: "records/:datasetId", element: <RecordsPage /> },
           {
             path: "team",
             element: (
