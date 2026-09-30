@@ -1,6 +1,6 @@
 import type { NavIcon, NavItem } from "@app/shared";
 import { ROLE_REGISTRY } from "@app/shared";
-import { LogOut, Menu, Shield, Users, X } from "lucide-react";
+import { LogOut, Menu, Shield, Table, Users, X } from "lucide-react";
 import { useEffect, useState, type ComponentType } from "react";
 import { createPortal } from "react-dom";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
@@ -16,6 +16,7 @@ import { ChangePasswordDialog } from "../auth/change-password-dialog";
 import { endSession } from "../auth/session";
 
 const ICONS: Record<NavIcon, ComponentType<{ className?: string; strokeWidth?: number }>> = {
+  table: Table,
   users: Users,
   shield: Shield,
 };

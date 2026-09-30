@@ -11,6 +11,17 @@ export {
   UNDO_SECONDS,
 } from "./constants";
 export {
+  COLUMN_TYPES,
+  GROUP_TINTS,
+  autoNamePrefix,
+  cleanLabel,
+  datasetColumnSchema,
+  datasetGroupSchema,
+  datasetSchemaSchema,
+  parseDatasetSchema,
+} from "./datasetSchema";
+export type { ColumnType, DatasetColumn, DatasetGroup, DatasetSchema, DatasetSummary } from "./datasetSchema";
+export {
   excelDateToISO,
   formatDisplayDate,
   formatDisplayDateTime,
@@ -20,7 +31,13 @@ export { ERROR_CODES, ERROR_STATUS } from "./errors";
 export type { ErrorCode } from "./errors";
 export type { DomainEvent } from "./events";
 export { isServerManagedField } from "./fields";
-export { CANONICAL_GROUPS, isGroupKeySlug, labelForGroupKey, normalizeGroupKey } from "./groupKey";
+export {
+  CANONICAL_GROUPS,
+  groupKeyFromLabel,
+  isGroupKeySlug,
+  labelForGroupKey,
+  normalizeGroupKey,
+} from "./groupKey";
 export {
   METRICS,
   calendarDaysBetween,

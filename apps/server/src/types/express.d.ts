@@ -9,6 +9,12 @@ declare global {
       validated?: unknown;
       user?: PublicUser;
       sessionId?: string;
+      file?: {
+        originalname: string;
+        mimetype: string;
+        size: number;
+        buffer: Buffer;
+      };
     }
   }
 }
