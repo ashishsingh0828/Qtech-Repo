@@ -53,6 +53,12 @@ type GridProps = {
   onRestoreValue: (row: RowProjection, column: DatasetColumn, value: StoredCell) => void;
   onReadOnly: (column: DatasetColumn) => void;
   onRange: (start: number, end: number) => void;
+  canStructure?: boolean;
+  onRenameColumn?: (column: DatasetColumn, label: string) => void;
+  onInsertColumn?: (column: DatasetColumn, side: "left" | "right") => void;
+  onMoveColumn?: (column: DatasetColumn, direction: "left" | "right") => void;
+  onHideColumn?: (column: DatasetColumn) => void;
+  onDeleteColumn?: (column: DatasetColumn) => void;
 };
 
 export function RecordsGrid(props: GridProps) {
@@ -208,6 +214,12 @@ export function RecordsGrid(props: GridProps) {
                   sort={props.sort}
                   onFilter={props.onFilter}
                   onSort={props.onSort}
+                  canStructure={props.canStructure}
+                  onRename={props.onRenameColumn}
+                  onInsert={props.onInsertColumn}
+                  onMove={props.onMoveColumn}
+                  onHide={props.onHideColumn}
+                  onDelete={props.onDeleteColumn}
                 />
               ))}
             </div>
@@ -225,6 +237,12 @@ export function RecordsGrid(props: GridProps) {
                       sort={props.sort}
                       onFilter={props.onFilter}
                       onSort={props.onSort}
+                      canStructure={props.canStructure}
+                      onRename={props.onRenameColumn}
+                      onInsert={props.onInsertColumn}
+                      onMove={props.onMoveColumn}
+                      onHide={props.onHideColumn}
+                      onDelete={props.onDeleteColumn}
                     />
                   </div>
                 );
@@ -282,6 +300,12 @@ function ColumnHeader({
   sort,
   onFilter,
   onSort,
+  canStructure,
+  onRename,
+  onInsert,
+  onMove,
+  onHide,
+  onDelete,
 }: {
   column: DatasetColumn;
   width: number;
@@ -290,6 +314,12 @@ function ColumnHeader({
   sort: SortState;
   onFilter: (key: string, filter: ColumnFilter | null) => void;
   onSort: (key: string, direction: "asc" | "desc") => void;
+  canStructure?: boolean;
+  onRename?: (column: DatasetColumn, label: string) => void;
+  onInsert?: (column: DatasetColumn, side: "left" | "right") => void;
+  onMove?: (column: DatasetColumn, direction: "left" | "right") => void;
+  onHide?: (column: DatasetColumn) => void;
+  onDelete?: (column: DatasetColumn) => void;
 }) {
   const active = filters[column.key];
   const counts = distinctCounts(rows, column);
@@ -297,16 +327,65 @@ function ColumnHeader({
   const [from, setFrom] = useState(active?.kind === "dates" ? active.from : "");
   const [to, setTo] = useState(active?.kind === "dates" ? active.to : "");
   const [picked, setPicked] = useState<string[]>(active?.kind === "values" ? active.selected : counts.map((item) => item.value));
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(column.label);
+  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
+
+  function commitRename() {
+    const label = draft.trim();
+    setEditing(false);
+    if (label && label !== column.label) onRename?.(column, label);
+    else setDraft(column.label);
+  }
+
   return (
-    <Popover>
-      <PopoverTrigger asChild>
+    <div
+      className="flex h-8 min-w-0 items-center border-r border-hairline"
+      style={{ width }}
+      onContextMenu={(event) => {
+        if (!canStructure) return;
+        event.preventDefault();
+        setMenu({ x: event.clientX, y: event.clientY });
+      }}
+    >
+      {editing ? (
+        <input
+          autoFocus
+          value={draft}
+          aria-label={`Rename ${column.label}`}
+          className="h-7 min-w-0 flex-1 bg-transparent px-2 text-xs font-semibold text-ink outline-none"
+          onChange={(event) => setDraft(event.target.value)}
+          onBlur={commitRename}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              event.preventDefault();
+              commitRename();
+            }
+            if (event.key === "Escape") {
+              setDraft(column.label);
+              setEditing(false);
+            }
+          }}
+        />
+      ) : (
         <button
           type="button"
-          className="flex h-8 w-full min-w-0 items-center gap-1 border-r border-hairline px-2 text-left text-xs font-semibold text-ink"
-          style={{ width }}
+          className="flex h-8 min-w-0 flex-1 items-center gap-1 px-2 text-left text-xs font-semibold text-ink"
+          onDoubleClick={(event) => {
+            if (!canStructure) return;
+            event.preventDefault();
+            setDraft(column.label);
+            setEditing(true);
+          }}
         >
           <span className="min-w-0 flex-1 truncate">{column.label}</span>
           {sort?.key === column.key ? <span className="text-gold">{sort.direction === "asc" ? "↑" : "↓"}</span> : null}
+        </button>
+      )}
+      <Popover>
+      <PopoverTrigger asChild>
+        <button type="button" className="h-8 shrink-0 px-1 text-xs text-ink" aria-label={`${column.label} filter`}>
+          ▾
         </button>
       </PopoverTrigger>
       <PopoverContent className="w-72">
@@ -366,6 +445,31 @@ function ColumnHeader({
         </div>
       </PopoverContent>
     </Popover>
+      {menu
+        ? createPortal(
+            <>
+              <button type="button" aria-label="Close column menu" className="fixed inset-0 z-popover cursor-default" onClick={() => setMenu(null)} />
+              <div className="fixed z-popover w-56 rounded-control border border-hairline bg-surface p-1 text-sm shadow-float" style={{ left: menu.x, top: menu.y }}>
+                <HeaderMenuButton label="Insert column left" onClick={() => { setMenu(null); onInsert?.(column, "left"); }} />
+                <HeaderMenuButton label="Insert column right" onClick={() => { setMenu(null); onInsert?.(column, "right"); }} />
+                <HeaderMenuButton label="Move left" onClick={() => { setMenu(null); onMove?.(column, "left"); }} />
+                <HeaderMenuButton label="Move right" onClick={() => { setMenu(null); onMove?.(column, "right"); }} />
+                <HeaderMenuButton label="Hide column" onClick={() => { setMenu(null); onHide?.(column); }} />
+                <HeaderMenuButton label="Delete column" danger onClick={() => { setMenu(null); onDelete?.(column); }} />
+              </div>
+            </>,
+            document.body,
+          )
+        : null}
+    </div>
+  );
+}
+
+function HeaderMenuButton({ label, onClick, danger = false }: { label: string; onClick: () => void; danger?: boolean }) {
+  return (
+    <button type="button" className={cn("flex min-h-11 w-full items-center rounded-control px-2 text-left hover:bg-surface-2", danger && "text-ruby")} onClick={onClick}>
+      {label}
+    </button>
   );
 }
 

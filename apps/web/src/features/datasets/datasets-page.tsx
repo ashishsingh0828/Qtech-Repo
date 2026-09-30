@@ -2,7 +2,7 @@ import type { DatasetSummary } from "@app/shared";
 import { MAX_UPLOAD_MB, hasCapability } from "@app/shared";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useRef, useState, type FormEvent } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import {
   Button,
@@ -23,6 +23,7 @@ import { formatWhen } from "../../lib/format";
 import { queryClient } from "../../lib/query";
 import { useAuth } from "../auth/auth-gate";
 import { rememberDataset } from "../records/storage";
+import { MergeDialog } from "./merge-dialog";
 
 type DatasetsResponse = { datasets: DatasetSummary[] };
 
@@ -30,7 +31,12 @@ export function DatasetsPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const canImport = hasCapability(user.role, "importData");
+  const canStructure = hasCapability(user.role, "manageStructure");
+  const canDelete = hasCapability(user.role, "deleteDataset");
   const [importOpen, setImportOpen] = useState(false);
+  const [mergeTarget, setMergeTarget] = useState<DatasetSummary | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<DatasetSummary | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const [exportingId, setExportingId] = useState<string | null>(null);
   const query = useQuery({
     queryKey: ["datasets"],
@@ -116,21 +122,20 @@ export function DatasetsPage() {
                     </td>
                     <td className="whitespace-nowrap px-4 py-3 tabular-nums text-ink-2">{formatWhen(dataset.createdAt)}</td>
                     <td className="px-4 py-3">
-                      <div className="flex flex-wrap gap-2">
-                        <Button
-                          size="sm"
-                          onClick={() => {
-                            rememberDataset(user.id, dataset.id);
-                            void navigate(`/records/${dataset.id}`);
-                          }}
-                        >
-                          Open
-                        </Button>
-                        <Button size="sm" variant="secondary" disabled={exportingId === dataset.id} onClick={() => void onExport(dataset)}>
-                          {exportingId === dataset.id ? <Spinner /> : null}
-                          Export
-                        </Button>
-                      </div>
+                      <DatasetActions
+                        dataset={dataset}
+                        exporting={exportingId === dataset.id}
+                        canStructure={canStructure}
+                        canImport={canImport}
+                        canDelete={canDelete}
+                        onOpen={() => {
+                          rememberDataset(user.id, dataset.id);
+                          void navigate(`/records/${dataset.id}`);
+                        }}
+                        onExport={() => void onExport(dataset)}
+                        onMerge={() => setMergeTarget(dataset)}
+                        onDelete={() => setDeleteTarget(dataset)}
+                      />
                     </td>
                   </tr>
                 ))}
@@ -145,20 +150,20 @@ export function DatasetsPage() {
                 <p className="text-sm tabular-nums text-ink-2">{dataset.rowCount} rows</p>
                 <p className="truncate text-sm text-ink-2">{dataset.uploadedByName}</p>
                 <p className="text-sm tabular-nums text-ink-2">{formatWhen(dataset.createdAt)}</p>
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    onClick={() => {
-                      rememberDataset(user.id, dataset.id);
-                      void navigate(`/records/${dataset.id}`);
-                    }}
-                  >
-                    Open
-                  </Button>
-                  <Button variant="secondary" disabled={exportingId === dataset.id} onClick={() => void onExport(dataset)}>
-                    {exportingId === dataset.id ? <Spinner /> : null}
-                    Export
-                  </Button>
-                </div>
+                <DatasetActions
+                  dataset={dataset}
+                  exporting={exportingId === dataset.id}
+                  canStructure={canStructure}
+                  canImport={canImport}
+                  canDelete={canDelete}
+                  onOpen={() => {
+                    rememberDataset(user.id, dataset.id);
+                    void navigate(`/records/${dataset.id}`);
+                  }}
+                  onExport={() => void onExport(dataset)}
+                  onMerge={() => setMergeTarget(dataset)}
+                  onDelete={() => setDeleteTarget(dataset)}
+                />
               </article>
             ))}
           </div>
@@ -173,6 +178,99 @@ export function DatasetsPage() {
             void queryClient.invalidateQueries({ queryKey: ["datasets"] });
           }}
         />
+      ) : null}
+      <MergeDialog
+        datasetId={mergeTarget?.id ?? null}
+        datasetName={mergeTarget?.name ?? ""}
+        open={mergeTarget != null}
+        onOpenChange={(open) => {
+          if (!open) setMergeTarget(null);
+        }}
+      />
+      <Dialog open={deleteTarget != null} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Move to Trash</DialogTitle>
+            <DialogDescription>
+              {deleteTarget ? `${deleteTarget.name} can be restored for 30 days.` : "This dataset can be restored for 30 days."}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="secondary" disabled={deleting} onClick={() => setDeleteTarget(null)}>
+              Cancel
+            </Button>
+            <Button
+              className="bg-ruby text-canvas hover:bg-ruby"
+              disabled={deleting || !deleteTarget}
+              onClick={() => {
+                if (!deleteTarget) return;
+                setDeleting(true);
+                void api(`/api/datasets/${deleteTarget.id}`, { method: "DELETE" })
+                  .then(async () => {
+                    setDeleteTarget(null);
+                    await queryClient.invalidateQueries({ queryKey: ["datasets"] });
+                    toast.success("Dataset moved to Trash.");
+                  })
+                  .catch((error: unknown) => {
+                    if (!isUnauthenticated(error)) toast.error(errorText(error, "Could not delete the dataset."));
+                  })
+                  .finally(() => setDeleting(false));
+              }}
+            >
+              {deleting ? <Spinner /> : null}
+              Move to Trash
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+function DatasetActions({
+  dataset,
+  exporting,
+  canStructure,
+  canImport,
+  canDelete,
+  onOpen,
+  onExport,
+  onMerge,
+  onDelete,
+}: {
+  dataset: DatasetSummary;
+  exporting: boolean;
+  canStructure: boolean;
+  canImport: boolean;
+  canDelete: boolean;
+  onOpen: () => void;
+  onExport: () => void;
+  onMerge: () => void;
+  onDelete: () => void;
+}) {
+  return (
+    <div className="flex flex-wrap gap-2">
+      <Button size="sm" onClick={onOpen}>
+        Open
+      </Button>
+      <Button size="sm" variant="secondary" disabled={exporting} onClick={onExport}>
+        {exporting ? <Spinner /> : null}
+        Export
+      </Button>
+      {canStructure ? (
+        <Button size="sm" variant="secondary" asChild>
+          <Link to={`/datasets/${dataset.id}/schema`}>Structure</Link>
+        </Button>
+      ) : null}
+      {canImport ? (
+        <Button size="sm" variant="secondary" onClick={onMerge}>
+          Update from Excel
+        </Button>
+      ) : null}
+      {canDelete ? (
+        <Button size="sm" variant="secondary" className="text-ruby" onClick={onDelete}>
+          Delete
+        </Button>
       ) : null}
     </div>
   );

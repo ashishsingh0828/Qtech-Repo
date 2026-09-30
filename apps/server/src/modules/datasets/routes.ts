@@ -6,6 +6,7 @@ import { asyncHandler } from "../../lib/asyncHandler";
 import { AppError } from "../../lib/errors";
 import { validate, validated } from "../../lib/validate";
 import { currentUser, requireAuth, requireCapability } from "../../middleware/auth";
+import { confirmMerge, previewMerge } from "./merge";
 import {
   cellHistory,
   createRow,
@@ -18,17 +19,40 @@ import {
   updateRow,
 } from "./rows";
 import {
+  addColumnSchema,
+  addGroupSchema,
+  columnParamsSchema,
   createRowSchema,
   datasetParamsSchema,
   exportDatasetSchema,
   exportRowsSchema,
+  groupParamsSchema,
   historySchema,
+  importConfirmSchema,
+  importPreviewSchema,
   listDatasetsSchema,
   listRowsSchema,
+  moveColumnSchema,
+  moveGroupSchema,
+  patchColumnSchema,
+  patchGroupSchema,
   rowParamsSchema,
   updateRowSchema,
 } from "./schema";
 import { exportDataset, importDataset, listDatasets } from "./service";
+import {
+  addColumn,
+  addGroup,
+  deleteColumn,
+  deleteGroup,
+  moveColumn,
+  moveGroup,
+  restoreColumn,
+  restoreGroup,
+  softDeleteDataset,
+  updateColumn,
+  updateGroup,
+} from "./structure";
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -164,6 +188,155 @@ datasetsRouter.get(
     const { params } = validated<typeof datasetParamsSchema._output>(req);
     const edits = await recentEdits(currentUser(req), params.id);
     res.status(200).json(edits);
+  }),
+);
+
+datasetsRouter.post(
+  "/:id/columns",
+  requireCapability("manageStructure"),
+  validate(addColumnSchema),
+  asyncHandler(async (req, res) => {
+    const { params, body } = validated<typeof addColumnSchema._output>(req);
+    const schema = await addColumn(currentUser(req), params.id, body);
+    res.status(201).json({ schema });
+  }),
+);
+
+datasetsRouter.patch(
+  "/:id/columns/:key",
+  requireCapability("manageStructure"),
+  validate(patchColumnSchema),
+  asyncHandler(async (req, res) => {
+    const { params, body } = validated<typeof patchColumnSchema._output>(req);
+    const schema = await updateColumn(currentUser(req), params.id, params.key, body);
+    res.status(200).json({ schema });
+  }),
+);
+
+datasetsRouter.post(
+  "/:id/columns/:key/move",
+  requireCapability("manageStructure"),
+  validate(moveColumnSchema),
+  asyncHandler(async (req, res) => {
+    const { params, body } = validated<typeof moveColumnSchema._output>(req);
+    const schema = await moveColumn(currentUser(req), params.id, params.key, body);
+    res.status(200).json({ schema });
+  }),
+);
+
+datasetsRouter.delete(
+  "/:id/columns/:key",
+  requireCapability("manageStructure"),
+  validate(columnParamsSchema),
+  asyncHandler(async (req, res) => {
+    const { params } = validated<typeof columnParamsSchema._output>(req);
+    const schema = await deleteColumn(currentUser(req), params.id, params.key);
+    res.status(200).json({ schema });
+  }),
+);
+
+datasetsRouter.post(
+  "/:id/columns/:key/restore",
+  requireCapability("manageStructure"),
+  validate(columnParamsSchema),
+  asyncHandler(async (req, res) => {
+    const { params } = validated<typeof columnParamsSchema._output>(req);
+    const schema = await restoreColumn(currentUser(req), params.id, params.key);
+    res.status(200).json({ schema });
+  }),
+);
+
+datasetsRouter.post(
+  "/:id/groups",
+  requireCapability("manageStructure"),
+  validate(addGroupSchema),
+  asyncHandler(async (req, res) => {
+    const { params, body } = validated<typeof addGroupSchema._output>(req);
+    const schema = await addGroup(currentUser(req), params.id, body.label);
+    res.status(201).json({ schema });
+  }),
+);
+
+datasetsRouter.patch(
+  "/:id/groups/:groupId",
+  requireCapability("manageStructure"),
+  validate(patchGroupSchema),
+  asyncHandler(async (req, res) => {
+    const { params, body } = validated<typeof patchGroupSchema._output>(req);
+    const schema = await updateGroup(currentUser(req), params.id, params.groupId, body);
+    res.status(200).json({ schema });
+  }),
+);
+
+datasetsRouter.post(
+  "/:id/groups/:groupId/move",
+  requireCapability("manageStructure"),
+  validate(moveGroupSchema),
+  asyncHandler(async (req, res) => {
+    const { params, body } = validated<typeof moveGroupSchema._output>(req);
+    const schema = await moveGroup(currentUser(req), params.id, params.groupId, body);
+    res.status(200).json({ schema });
+  }),
+);
+
+datasetsRouter.delete(
+  "/:id/groups/:groupId",
+  requireCapability("manageStructure"),
+  validate(groupParamsSchema),
+  asyncHandler(async (req, res) => {
+    const { params } = validated<typeof groupParamsSchema._output>(req);
+    const schema = await deleteGroup(currentUser(req), params.id, params.groupId);
+    res.status(200).json({ schema });
+  }),
+);
+
+datasetsRouter.post(
+  "/:id/groups/:groupId/restore",
+  requireCapability("manageStructure"),
+  validate(groupParamsSchema),
+  asyncHandler(async (req, res) => {
+    const { params } = validated<typeof groupParamsSchema._output>(req);
+    const schema = await restoreGroup(currentUser(req), params.id, params.groupId);
+    res.status(200).json({ schema });
+  }),
+);
+
+datasetsRouter.post(
+  "/:id/import/preview",
+  requireCapability("importData"),
+  receiveUpload,
+  validate(importPreviewSchema),
+  asyncHandler(async (req, res) => {
+    const { params } = validated<typeof importPreviewSchema._output>(req);
+    const file = req.file;
+    if (!file) throw new AppError("VALIDATION", 400, "Choose an .xlsx file.");
+    const preview = await previewMerge(currentUser(req), params.id, {
+      originalname: file.originalname,
+      buffer: file.buffer,
+    });
+    res.status(200).json(preview);
+  }),
+);
+
+datasetsRouter.post(
+  "/:id/import/confirm",
+  requireCapability("importData"),
+  validate(importConfirmSchema),
+  asyncHandler(async (req, res) => {
+    const { params, body } = validated<typeof importConfirmSchema._output>(req);
+    const result = await confirmMerge(currentUser(req), params.id, body.token);
+    res.status(200).json(result);
+  }),
+);
+
+datasetsRouter.delete(
+  "/:id",
+  requireCapability("deleteDataset"),
+  validate(datasetParamsSchema),
+  asyncHandler(async (req, res) => {
+    const { params } = validated<typeof datasetParamsSchema._output>(req);
+    await softDeleteDataset(currentUser(req), params.id);
+    res.status(200).json({ ok: true });
   }),
 );
 
