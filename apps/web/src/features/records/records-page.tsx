@@ -1,0 +1,700 @@
+import type { DatasetColumn, DatasetDetail, RecentEdit, RowProjection } from "@app/shared";
+import {
+  RECENT_EDIT_HOURS,
+  ROLE_REGISTRY,
+  canEditGroup,
+  hasCapability,
+  isServerManagedField,
+} from "@app/shared";
+import { useQuery } from "@tanstack/react-query";
+import { formatDistanceToNow } from "date-fns";
+import { Lock } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useParams } from "react-router-dom";
+import { toast } from "sonner";
+import {
+  Badge,
+  Button,
+  Checkbox,
+  EmptyState,
+  Input,
+  PageHeader,
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+  Skeleton,
+  Spinner,
+  Tabs,
+  TabsList,
+  TabsTrigger,
+} from "../../components/ui";
+import { ApiError, api } from "../../lib/api";
+import { errorText, isUnauthenticated } from "../../lib/errors";
+import { queryClient } from "../../lib/query";
+import { useAuth } from "../auth/auth-gate";
+import { downloadWorkbook } from "./download";
+import { MobileCards } from "./records-mobile";
+import { CellMenuHost, RecordsGrid } from "./records-grid";
+import {
+  applyView,
+  defaultHidden,
+  distinctCounts,
+  editText,
+  layoutColumns,
+  type ColumnFilter,
+  type SortState,
+} from "./model";
+import { readDensity, readHiddenColumns, rememberDataset, writeDensity, writeHiddenColumns, type Density } from "./storage";
+
+type RowsResponse = { total: number; rows: RowProjection[] };
+type ActiveCell = { rowId: string; columnKey: string };
+type EditorState = ActiveCell & { draft: string };
+type ConflictState = EditorState & { byName: string; version: number };
+
+export function RecordsPage() {
+  const { datasetId = "" } = useParams();
+  const { user, permissions } = useAuth();
+  const searchRef = useRef<HTMLInputElement>(null);
+  const [groupId, setGroupId] = useState("");
+  const [advanced, setAdvanced] = useState(false);
+  const [density, setDensity] = useState<Density>(() => readDensity(user.id));
+  const [hidden, setHidden] = useState<Set<string>>(new Set());
+  const [hiddenFor, setHiddenFor] = useState("");
+  const [search, setSearch] = useState("");
+  const [recentOnly, setRecentOnly] = useState(false);
+  const [filters, setFilters] = useState<Record<string, ColumnFilter>>({});
+  const [sort, setSort] = useState<SortState>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [active, setActive] = useState<ActiveCell | null>(null);
+  const [editor, setEditor] = useState<EditorState | null>(null);
+  const [conflict, setConflict] = useState<ConflictState | null>(null);
+  const [flash, setFlash] = useState<string | null>(null);
+  const [range, setRange] = useState({ start: 0, end: 0 });
+  const [saving, setSaving] = useState(false);
+  const [columnQuery, setColumnQuery] = useState("");
+  const canManage = hasCapability(user.role, "manageRows");
+  const canRestore = user.role === "admin" || user.role === "manager";
+  const showAdvanced = canRestore;
+
+  const datasetQuery = useQuery({
+    queryKey: ["dataset", datasetId],
+    queryFn: () => api<{ dataset: DatasetDetail }>(`/api/datasets/${datasetId}`),
+  });
+  const rowsQuery = useQuery({
+    queryKey: ["dataset-rows", datasetId],
+    queryFn: () => api<RowsResponse>(`/api/datasets/${datasetId}/rows`),
+  });
+  const editsQuery = useQuery({
+    queryKey: ["recent-edits", datasetId],
+    queryFn: () => api<RecentEdit[]>(`/api/datasets/${datasetId}/recent-edits`),
+  });
+
+  const detail = datasetQuery.data?.dataset;
+  const sourceRows = rowsQuery.data?.rows ?? [];
+
+  useEffect(() => {
+    rememberDataset(user.id, datasetId);
+  }, [user.id, datasetId]);
+
+  useEffect(() => {
+    if (!detail) return;
+    if (detail.schema.groups.some((group) => group.id === groupId)) return;
+    const editable = detail.schema.groups.find((group) => canEditGroup(permissions.groupAccess, group.groupKey));
+    setGroupId(editable?.id ?? detail.schema.groups[0]?.id ?? "");
+  }, [detail, groupId, permissions.groupAccess]);
+
+  useEffect(() => {
+    if (!detail || hiddenFor === detail.id) return;
+    const stored = readHiddenColumns(user.id, detail.id);
+    setHidden(new Set(stored ?? defaultHidden(detail.schema)));
+    setHiddenFor(detail.id);
+  }, [detail, hiddenFor, user.id]);
+
+  useEffect(() => {
+    if (!detail || hiddenFor !== detail.id) return;
+    writeHiddenColumns(user.id, detail.id, [...hidden]);
+  }, [detail, hidden, hiddenFor, user.id]);
+
+  useEffect(() => {
+    function onKey(event: KeyboardEvent) {
+      if (event.key !== "/" || event.metaKey || event.ctrlKey || event.altKey) return;
+      const target = event.target;
+      if (target instanceof HTMLElement && target.closest("input, textarea")) return;
+      event.preventDefault();
+      searchRef.current?.focus();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  useEffect(() => {
+    if (!flash) return;
+    const timer = window.setTimeout(() => setFlash(null), 160);
+    return () => window.clearTimeout(timer);
+  }, [flash]);
+
+  const onRange = useCallback((start: number, end: number) => {
+    setRange((current) => (current.start === start && current.end === end ? current : { start, end }));
+  }, []);
+
+  const recentSince = Date.now() - RECENT_EDIT_HOURS * 60 * 60 * 1000;
+  const layout = useMemo(
+    () => (detail ? layoutColumns(detail.schema, groupId, advanced, hidden) : { pinned: [], scroll: [] }),
+    [detail, groupId, advanced, hidden],
+  );
+  const viewColumns = useMemo(() => {
+    if (!detail) return [];
+    return detail.schema.columns.filter((column) => !hidden.has(column.key));
+  }, [detail, hidden]);
+  const filtered = useMemo(
+    () => applyView(sourceRows, viewColumns, filters, sort, search, recentOnly, recentSince),
+    [sourceRows, viewColumns, filters, sort, search, recentOnly, recentSince],
+  );
+  const recent = useMemo(() => {
+    const map = new Map<string, RecentEdit>();
+    for (const edit of editsQuery.data ?? []) {
+      const key = `${edit.rowId}:${edit.columnKey}`;
+      if (!map.has(key)) map.set(key, edit);
+    }
+    return map;
+  }, [editsQuery.data]);
+
+  function canEditColumn(column: DatasetColumn): boolean {
+    if (!detail) return false;
+    if (isServerManagedField(column.key) || (column.semantic != null && isServerManagedField(column.semantic))) return false;
+    const group = detail.schema.groups.find((item) => item.id === column.groupId);
+    return group != null && canEditGroup(permissions.groupAccess, group.groupKey);
+  }
+
+  function deny(column: DatasetColumn) {
+    if (isServerManagedField(column.key) || (column.semantic != null && isServerManagedField(column.semantic))) {
+      toast.error("This field is updated by the system.");
+      return;
+    }
+    const names =
+      detail?.schema.groups
+        .filter((group) => canEditGroup(permissions.groupAccess, group.groupKey))
+        .map((group) => group.label)
+        .join(", ") || "none";
+    toast.error(`Your role (${ROLE_REGISTRY[user.role].label}) can edit ${names} only.`);
+  }
+
+  async function saveChanges(row: RowProjection, changes: Record<string, string | null>, version = row.version): Promise<boolean> {
+    const keys = Object.keys(changes);
+    if (keys.length === 0) return true;
+    const key = ["dataset-rows", datasetId] as const;
+    const snapshot = queryClient.getQueryData<RowsResponse>(key);
+    setSaving(true);
+    try {
+      const result = await api<{ row: RowProjection }>(`/api/datasets/${datasetId}/rows/${row.id}`, {
+        method: "PATCH",
+        body: { version, changes },
+      });
+      queryClient.setQueryData<RowsResponse>(key, (current) =>
+        current ? { ...current, rows: current.rows.map((item) => (item.id === row.id ? result.row : item)) } : current,
+      );
+      if (keys.length === 1 && keys[0]) setFlash(`${row.id}:${keys[0]}`);
+      setConflict(null);
+      void queryClient.invalidateQueries({ queryKey: ["recent-edits", datasetId] });
+      void queryClient.invalidateQueries({ queryKey: ["dataset", datasetId] });
+      return true;
+    } catch (error) {
+      if (snapshot) queryClient.setQueryData(key, snapshot);
+      if (error instanceof ApiError && error.status === 409 && isProjection(error.body?.current)) {
+        const current = error.body.current;
+        queryClient.setQueryData<RowsResponse>(key, (existing) =>
+          existing ? { ...existing, rows: existing.rows.map((item) => (item.id === row.id ? current : item)) } : existing,
+        );
+        const columnKey = keys[0] ?? "";
+        const draft = columnKey ? String(changes[columnKey] ?? "") : "";
+        setConflict({ rowId: row.id, columnKey, draft, byName: current.updatedByName, version: current.version });
+        setEditor({ rowId: row.id, columnKey, draft });
+        return false;
+      }
+      if (error instanceof ApiError && error.status === 403) {
+        const blocked = Array.isArray(error.body?.blockedFields)
+          ? error.body.blockedFields.filter((item): item is string => typeof item === "string")
+          : [];
+        toast.error(blocked.length > 0 ? `${error.message} ${blocked.join(", ")}` : error.message);
+        return false;
+      }
+      if (!isUnauthenticated(error)) {
+        toast.error(errorText(error, "Could not save the cell."), {
+          action: { label: "Retry", onClick: () => void saveChanges(row, changes, version) },
+        });
+      }
+      return false;
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function commit(draft: string, move?: "next" | "prev") {
+    if (!editor || !detail) return;
+    const row = sourceRows.find((item) => item.id === editor.rowId);
+    const column = detail.schema.columns.find((item) => item.key === editor.columnKey);
+    setEditor(null);
+    if (move) shift(editor, move);
+    if (!row || !column) return;
+    const next = draft.trim() === "" ? null : draft;
+    const previous = editText(column, row.values[column.key]);
+    if ((next ?? "") === previous && !(conflict?.rowId === row.id && conflict.columnKey === column.key)) return;
+    const version = conflict?.rowId === row.id && conflict.columnKey === column.key ? conflict.version : row.version;
+    void saveChanges(row, { [column.key]: next }, version);
+  }
+
+  function shift(cell: ActiveCell, move: "next" | "prev") {
+    const columns = [...layout.pinned, ...layout.scroll];
+    const rowIndex = filtered.findIndex((row) => row.id === cell.rowId);
+    const columnIndex = columns.findIndex((column) => column.key === cell.columnKey);
+    if (rowIndex < 0 || columnIndex < 0) return;
+    let nextColumn = columnIndex + (move === "next" ? 1 : -1);
+    let nextRow = rowIndex;
+    if (nextColumn < 0) {
+      nextColumn = columns.length - 1;
+      nextRow -= 1;
+    }
+    if (nextColumn >= columns.length) {
+      nextColumn = 0;
+      nextRow += 1;
+    }
+    const row = filtered[nextRow];
+    const column = columns[nextColumn];
+    if (!row || !column) return;
+    setActive({ rowId: row.id, columnKey: column.key });
+  }
+
+  async function mutateRow(path: string, method: string, body?: unknown, success?: string): Promise<boolean> {
+    setSaving(true);
+    try {
+      await api(path, { method, body });
+      if (success) toast.success(success);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["dataset-rows", datasetId] }),
+        queryClient.invalidateQueries({ queryKey: ["dataset", datasetId] }),
+      ]);
+      return true;
+    } catch (error) {
+      if (!isUnauthenticated(error)) toast.error(errorText(error, "Could not update the row."));
+      return false;
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function removeFilter(key: string) {
+    setFilters((current) => {
+      const next = { ...current };
+      delete next[key];
+      return next;
+    });
+  }
+
+  if (datasetQuery.isPending || rowsQuery.isPending) return <RecordsSkeleton />;
+  if (datasetQuery.isError || rowsQuery.isError || !detail) {
+    return (
+      <div className="flex flex-col gap-6">
+        <PageHeader title="Records" subtitle="Imported rows." />
+        <div className="rounded-card border border-hairline bg-surface p-6">
+          <p className="text-sm text-ink-2">Could not load this dataset.</p>
+          <Button
+            className="mt-4"
+            onClick={() => {
+              void datasetQuery.refetch();
+              void rowsQuery.refetch();
+            }}
+          >
+            Retry
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  const activeRow = sourceRows.find((row) => row.id === active?.rowId);
+  const groupColumns = detail.schema.columns.filter((column) => column.groupId === groupId && !hidden.has(column.key));
+  const visibleGroups = detail.schema.groups.length;
+  const visibleColumnCount = detail.schema.columns.filter((column) => !hidden.has(column.key)).length;
+
+  return (
+    <div className="flex h-[calc(100dvh-var(--topbar-h)-6rem)] min-h-0 min-w-0 flex-col gap-3 md:h-[calc(100dvh-var(--topbar-h)-3rem)] xl:h-[calc(100dvh-var(--topbar-h)-4rem)]">
+      <PageHeader
+        title={detail.name}
+        subtitle="Records"
+        actions={
+          <>
+            <Badge>{detail.rowCount} rows</Badge>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="secondary">Export</Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-64">
+                <div className="flex flex-col">
+                  <button type="button" className="min-h-11 rounded-control px-2 text-left text-sm hover:bg-surface-2" onClick={() => void exportRows(detail.name)}>
+                    All rows
+                  </button>
+                  <button
+                    type="button"
+                    className="min-h-11 rounded-control px-2 text-left text-sm hover:bg-surface-2"
+                    onClick={() => void exportRows(detail.name, filtered.map((row) => row.id))}
+                  >
+                    Current view ({filtered.length} rows)
+                  </button>
+                  <button
+                    type="button"
+                    className="min-h-11 rounded-control px-2 text-left text-sm hover:bg-surface-2 disabled:opacity-50"
+                    disabled={selected.size === 0}
+                    onClick={() => void exportRows(detail.name, [...selected])}
+                  >
+                    Selected ({selected.size} rows)
+                  </button>
+                </div>
+              </PopoverContent>
+            </Popover>
+            {showAdvanced ? (
+              <Button variant={advanced ? "primary" : "secondary"} className="hidden md:inline-flex" onClick={() => setAdvanced((value) => !value)}>
+                All columns
+              </Button>
+            ) : null}
+          </>
+        }
+      />
+      {detail.schema.groups.length === 0 ? (
+        <div className="rounded-card border border-hairline bg-surface">
+          <EmptyState message="Nothing in this dataset is visible to your role." />
+        </div>
+      ) : (
+        <>
+          <Tabs value={groupId} onValueChange={setGroupId}>
+            <TabsList>
+              {detail.schema.groups.map((group) => {
+                const count = detail.schema.columns.filter((column) => column.groupId === group.id).length;
+                const locked = !canEditGroup(permissions.groupAccess, group.groupKey);
+                return (
+                  <TabsTrigger key={group.id} value={group.id}>
+                    <span className="inline-flex min-w-0 items-center gap-2">
+                      {locked ? <Lock className="size-3.5 text-gold" strokeWidth={1.5} /> : null}
+                      <span className="truncate">{group.label}</span>
+                      <Badge>{count}</Badge>
+                    </span>
+                  </TabsTrigger>
+                );
+              })}
+            </TabsList>
+          </Tabs>
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <Input
+              ref={searchRef}
+              value={search}
+              placeholder="Search visible columns"
+              aria-label="Search"
+              className="max-w-xs"
+              onChange={(event) => setSearch(event.target.value)}
+            />
+            <Button variant={recentOnly ? "primary" : "secondary"} onClick={() => setRecentOnly((value) => !value)}>
+              Recently updated
+            </Button>
+            <Button variant={density === "comfortable" ? "primary" : "secondary"} onClick={() => chooseDensity("comfortable")}>
+              Comfortable
+            </Button>
+            <Button variant={density === "compact" ? "primary" : "secondary"} onClick={() => chooseDensity("compact")}>
+              Compact
+            </Button>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="secondary">Columns</Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-72">
+                <Input value={columnQuery} placeholder="Search columns" aria-label="Search columns" onChange={(event) => setColumnQuery(event.target.value)} />
+                <div className="mt-2 flex max-h-64 flex-col overflow-auto">
+                  {detail.schema.columns
+                    .filter((column) => column.label.toLowerCase().includes(columnQuery.trim().toLowerCase()))
+                    .map((column) => (
+                      <label key={column.key} className="flex min-h-11 min-w-0 items-center gap-2 text-sm">
+                        <Checkbox
+                          checked={!hidden.has(column.key)}
+                          aria-label={column.label}
+                          onCheckedChange={(state) => {
+                            setHidden((current) => {
+                              const next = new Set(current);
+                              if (state === true) next.delete(column.key);
+                              else next.add(column.key);
+                              return next;
+                            });
+                          }}
+                        />
+                        <span className="min-w-0 truncate">{column.label}</span>
+                      </label>
+                    ))}
+                </div>
+                <Button
+                  className="mt-2"
+                  variant="secondary"
+                  onClick={() => setHidden(new Set(defaultHidden(detail.schema)))}
+                >
+                  Reset to default
+                </Button>
+              </PopoverContent>
+            </Popover>
+            {canManage ? (
+              <Button onClick={() => void mutateRow(`/api/datasets/${datasetId}/rows`, "POST", { atEnd: true }, "Row added.")} disabled={saving}>
+                {saving ? <Spinner /> : null}
+                + New row
+              </Button>
+            ) : null}
+          </div>
+          <FilterBar
+            filters={filters}
+            sort={sort}
+            search={search}
+            recentOnly={recentOnly}
+            columns={detail.schema.columns}
+            onRemove={removeFilter}
+            onClear={() => {
+              setFilters({});
+              setSort(null);
+              setSearch("");
+              setRecentOnly(false);
+            }}
+            onClearSort={() => setSort(null)}
+            onClearSearch={() => setSearch("")}
+            onClearRecent={() => setRecentOnly(false)}
+          />
+          {conflict ? (
+            <p className="rounded-control border border-hairline bg-gold-soft px-3 py-2 text-sm text-ink">
+              Updated by {conflict.byName || "someone"} —{" "}
+              <button type="button" className="font-medium underline" onClick={() => { setConflict(null); setEditor(null); }}>
+                Reload
+              </button>
+              {" / "}
+              <button
+                type="button"
+                className="font-medium underline"
+                onClick={() => {
+                  const row = sourceRows.find((item) => item.id === conflict.rowId);
+                  if (!row) return;
+                  void saveChanges(row, { [conflict.columnKey]: conflict.draft.trim() === "" ? null : conflict.draft }, conflict.version);
+                }}
+              >
+                Overwrite
+              </button>
+            </p>
+          ) : null}
+          {activeRow ? (
+            <p className="truncate text-sm text-ink-2">
+              Updated {formatDistanceToNow(new Date(activeRow.updatedAt), { addSuffix: true })}
+              {activeRow.updatedByName ? ` by ${activeRow.updatedByName}` : ""}
+            </p>
+          ) : null}
+          <div className="hidden min-h-0 min-w-0 flex-1 md:flex">
+            <RecordsGrid
+              datasetId={datasetId}
+              rows={filtered}
+              allRows={sourceRows}
+              pinned={layout.pinned}
+              scrollColumns={layout.scroll}
+              groups={detail.schema.groups}
+              advanced={advanced}
+              rowHeight={density === "compact" ? 32 : 40}
+              selectedRows={selected}
+              activeCell={active}
+              editor={editor}
+              flashKey={flash}
+              recent={recent}
+              filters={filters}
+              sort={sort}
+              search={search}
+              canManage={canManage}
+              canRestore={canRestore}
+              canEditColumn={canEditColumn}
+              optionsFor={(column) => distinctCounts(sourceRows, column).map((item) => item.value).filter((value) => value !== "(Blank)")}
+              onActiveCell={setActive}
+              onStartEdit={(row, column) => {
+                const draft = conflict?.rowId === row.id && conflict.columnKey === column.key ? conflict.draft : editText(column, row.values[column.key]);
+                setActive({ rowId: row.id, columnKey: column.key });
+                setEditor({ rowId: row.id, columnKey: column.key, draft });
+              }}
+              onDraft={(draft) => setEditor((current) => (current ? { ...current, draft } : current))}
+              onCommit={commit}
+              onCancel={() => setEditor(null)}
+              onToggleRow={(rowId, checked) => {
+                setSelected((current) => {
+                  const next = new Set(current);
+                  if (checked) next.add(rowId);
+                  else next.delete(rowId);
+                  return next;
+                });
+              }}
+              onToggleAll={(checked) => setSelected(checked ? new Set(filtered.map((row) => row.id)) : new Set())}
+              onFilter={(key, filter) => {
+                setFilters((current) => {
+                  const next = { ...current };
+                  if (filter) next[key] = filter;
+                  else delete next[key];
+                  return next;
+                });
+              }}
+              onSort={(key, direction) => setSort({ key, direction })}
+              onInsert={(rowId, place) =>
+                void mutateRow(
+                  `/api/datasets/${datasetId}/rows`,
+                  "POST",
+                  place === "above" ? { beforeRowId: rowId } : { afterRowId: rowId },
+                  "Row added.",
+                )
+              }
+              onDuplicate={(rowId) => void mutateRow(`/api/datasets/${datasetId}/rows/${rowId}/duplicate`, "POST", undefined, "Row duplicated.")}
+              onDelete={(rowId) => {
+                void mutateRow(`/api/datasets/${datasetId}/rows/${rowId}`, "DELETE", undefined).then((deleted) => {
+                  if (!deleted) return;
+                  setSelected((current) => {
+                    const next = new Set(current);
+                    next.delete(rowId);
+                    return next;
+                  });
+                  toast("Row deleted.", {
+                    duration: 10_000,
+                    action: {
+                      label: "Undo",
+                      onClick: () => void mutateRow(`/api/datasets/${datasetId}/rows/${rowId}/restore`, "POST", undefined, "Row restored."),
+                    },
+                  });
+                });
+              }}
+              onRestoreValue={(row, column, value) => {
+                const draft = value == null ? "" : String(value);
+                void saveChanges(row, { [column.key]: draft === "" ? null : draft }, row.version);
+              }}
+              onReadOnly={deny}
+              onRange={onRange}
+            />
+          </div>
+          <MobileCards
+            rows={filtered}
+            pinned={layout.pinned}
+            groupColumns={groupColumns}
+            selected={selected}
+            canEditColumn={canEditColumn}
+            optionsFor={(column) => distinctCounts(sourceRows, column).map((item) => item.value).filter((value) => value !== "(Blank)")}
+            onToggle={(rowId, checked) => {
+              setSelected((current) => {
+                const next = new Set(current);
+                if (checked) next.add(rowId);
+                else next.delete(rowId);
+                return next;
+              });
+            }}
+            saving={saving}
+            onSave={(row, changes) => saveChanges(row, changes, row.version)}
+          />
+          <div className="flex min-w-0 flex-wrap items-center justify-between gap-2 text-sm text-ink-2">
+            <p className="tabular-nums">
+              Showing {filtered.length === 0 ? "0-0" : `${range.start}-${range.end}`} of {filtered.length}
+            </p>
+            <p className="tabular-nums">
+              {visibleColumnCount} columns · {visibleGroups} groups
+            </p>
+          </div>
+        </>
+      )}
+      {selected.size > 0 ? (
+        <div className="fixed inset-x-4 bottom-20 z-popover flex min-w-0 flex-wrap items-center justify-between gap-2 rounded-card border border-hairline bg-surface px-4 py-3 shadow-float md:bottom-6">
+          <p className="text-sm text-ink">{selected.size} rows selected</p>
+          <div className="flex gap-2">
+            <Button onClick={() => void exportRows(detail.name, [...selected])}>Export selected</Button>
+            <Button variant="secondary" onClick={() => setSelected(new Set())}>
+              Deselect all
+            </Button>
+          </div>
+        </div>
+      ) : null}
+      <CellMenuHost />
+    </div>
+  );
+
+  function chooseDensity(next: Density) {
+    setDensity(next);
+    writeDensity(user.id, next);
+  }
+
+  async function exportRows(name: string, rowIds?: string[]) {
+    try {
+      await downloadWorkbook(datasetId, name, rowIds);
+      toast.success("Workbook exported.");
+    } catch (error) {
+      if (!isUnauthenticated(error)) toast.error(errorText(error, "Could not export the workbook."));
+    }
+  }
+}
+
+function FilterBar({
+  filters,
+  sort,
+  search,
+  recentOnly,
+  columns,
+  onRemove,
+  onClear,
+  onClearSort,
+  onClearSearch,
+  onClearRecent,
+}: {
+  filters: Record<string, ColumnFilter>;
+  sort: SortState;
+  search: string;
+  recentOnly: boolean;
+  columns: DatasetColumn[];
+  onRemove: (key: string) => void;
+  onClear: () => void;
+  onClearSort: () => void;
+  onClearSearch: () => void;
+  onClearRecent: () => void;
+}) {
+  const chips: Array<{ id: string; label: string; onRemove: () => void }> = [];
+  if (search.trim()) chips.push({ id: "search", label: `Search: ${search.trim()}`, onRemove: onClearSearch });
+  if (recentOnly) chips.push({ id: "recent", label: "Recently updated", onRemove: onClearRecent });
+  if (sort) {
+    const label = columns.find((column) => column.key === sort.key)?.label ?? sort.key;
+    chips.push({ id: "sort", label: `${label} ${sort.direction === "asc" ? "ascending" : "descending"}`, onRemove: onClearSort });
+  }
+  for (const [key, filter] of Object.entries(filters)) {
+    const label = columns.find((column) => column.key === key)?.label ?? key;
+    chips.push({ id: key, label: `${label}: ${filterLabel(filter)}`, onRemove: () => onRemove(key) });
+  }
+  if (chips.length === 0) return null;
+  return (
+    <div className="flex min-w-0 flex-wrap items-center gap-2">
+      {chips.map((chip) => (
+        <button key={chip.id} type="button" className="inline-flex min-h-9 max-w-full items-center gap-2 rounded-full bg-surface-2 px-3 text-sm text-ink" onClick={chip.onRemove}>
+          <span className="min-w-0 truncate">{chip.label}</span>
+          <span aria-hidden="true">×</span>
+        </button>
+      ))}
+      <Button size="sm" variant="ghost" onClick={onClear}>
+        Clear all
+      </Button>
+    </div>
+  );
+}
+
+function filterLabel(filter: ColumnFilter): string {
+  if (filter.kind === "contains") return filter.text;
+  if (filter.kind === "dates") return `${filter.from || "…"} to ${filter.to || "…"}`;
+  return `${filter.selected.length} values`;
+}
+
+function isProjection(value: unknown): value is RowProjection {
+  if (typeof value !== "object" || value === null) return false;
+  const record = value as Record<string, unknown>;
+  return typeof record.id === "string" && typeof record.version === "number" && typeof record.values === "object" && record.values !== null && typeof record.updatedByName === "string";
+}
+
+function RecordsSkeleton() {
+  return (
+    <div className="flex flex-col gap-4">
+      <Skeleton className="h-8 w-48" />
+      <Skeleton className="h-11 w-full" />
+      <Skeleton className="h-64 w-full" />
+    </div>
+  );
+}

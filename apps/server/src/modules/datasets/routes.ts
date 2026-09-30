@@ -6,7 +6,28 @@ import { asyncHandler } from "../../lib/asyncHandler";
 import { AppError } from "../../lib/errors";
 import { validate, validated } from "../../lib/validate";
 import { currentUser, requireAuth, requireCapability } from "../../middleware/auth";
-import { exportDatasetSchema, listDatasetsSchema } from "./schema";
+import {
+  cellHistory,
+  createRow,
+  deleteRow,
+  duplicateRow,
+  getDatasetDetail,
+  listRows,
+  recentEdits,
+  restoreRow,
+  updateRow,
+} from "./rows";
+import {
+  createRowSchema,
+  datasetParamsSchema,
+  exportDatasetSchema,
+  exportRowsSchema,
+  historySchema,
+  listDatasetsSchema,
+  listRowsSchema,
+  rowParamsSchema,
+  updateRowSchema,
+} from "./schema";
 import { exportDataset, importDataset, listDatasets } from "./service";
 
 const upload = multer({
@@ -48,10 +69,111 @@ datasetsRouter.get(
   asyncHandler(async (req, res) => {
     const { params } = validated<typeof exportDatasetSchema._output>(req);
     const result = await exportDataset(currentUser(req), params.id);
-    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-    res.setHeader("Content-Disposition", contentDisposition(result.filename));
-    res.setHeader("Cache-Control", "no-store");
-    res.status(200).send(result.body);
+    sendWorkbook(res, result);
+  }),
+);
+
+datasetsRouter.post(
+  "/:id/export",
+  validate(exportRowsSchema),
+  asyncHandler(async (req, res) => {
+    const { params, body } = validated<typeof exportRowsSchema._output>(req);
+    const result = await exportDataset(currentUser(req), params.id, body.rowIds);
+    sendWorkbook(res, result);
+  }),
+);
+
+datasetsRouter.get(
+  "/:id/rows",
+  validate(listRowsSchema),
+  asyncHandler(async (req, res) => {
+    const { params, query } = validated<typeof listRowsSchema._output>(req);
+    const result = await listRows(currentUser(req), params.id, query);
+    res.status(200).json(result);
+  }),
+);
+
+datasetsRouter.post(
+  "/:id/rows",
+  requireCapability("manageRows"),
+  validate(createRowSchema),
+  asyncHandler(async (req, res) => {
+    const { params, body } = validated<typeof createRowSchema._output>(req);
+    const result = await createRow(currentUser(req), params.id, body);
+    res.status(201).json(result);
+  }),
+);
+
+datasetsRouter.patch(
+  "/:id/rows/:rowId",
+  validate(updateRowSchema),
+  asyncHandler(async (req, res) => {
+    const { params, body } = validated<typeof updateRowSchema._output>(req);
+    const row = await updateRow(currentUser(req), params.id, params.rowId, body.version, body.changes);
+    res.status(200).json({ row });
+  }),
+);
+
+datasetsRouter.post(
+  "/:id/rows/:rowId/duplicate",
+  requireCapability("manageRows"),
+  validate(rowParamsSchema),
+  asyncHandler(async (req, res) => {
+    const { params } = validated<typeof rowParamsSchema._output>(req);
+    const result = await duplicateRow(currentUser(req), params.id, params.rowId);
+    res.status(201).json(result);
+  }),
+);
+
+datasetsRouter.delete(
+  "/:id/rows/:rowId",
+  requireCapability("manageRows"),
+  validate(rowParamsSchema),
+  asyncHandler(async (req, res) => {
+    const { params } = validated<typeof rowParamsSchema._output>(req);
+    const result = await deleteRow(currentUser(req), params.id, params.rowId);
+    res.status(200).json(result);
+  }),
+);
+
+datasetsRouter.post(
+  "/:id/rows/:rowId/restore",
+  requireCapability("manageRows"),
+  validate(rowParamsSchema),
+  asyncHandler(async (req, res) => {
+    const { params } = validated<typeof rowParamsSchema._output>(req);
+    const result = await restoreRow(currentUser(req), params.id, params.rowId);
+    res.status(200).json(result);
+  }),
+);
+
+datasetsRouter.get(
+  "/:id/rows/:rowId/history",
+  validate(historySchema),
+  asyncHandler(async (req, res) => {
+    const { params, query } = validated<typeof historySchema._output>(req);
+    const history = await cellHistory(currentUser(req), params.id, params.rowId, query.columnKey);
+    res.status(200).json(history);
+  }),
+);
+
+datasetsRouter.get(
+  "/:id/recent-edits",
+  validate(datasetParamsSchema),
+  asyncHandler(async (req, res) => {
+    const { params } = validated<typeof datasetParamsSchema._output>(req);
+    const edits = await recentEdits(currentUser(req), params.id);
+    res.status(200).json(edits);
+  }),
+);
+
+datasetsRouter.get(
+  "/:id",
+  validate(datasetParamsSchema),
+  asyncHandler(async (req, res) => {
+    const { params } = validated<typeof datasetParamsSchema._output>(req);
+    const dataset = await getDatasetDetail(currentUser(req), params.id);
+    res.status(200).json({ dataset });
   }),
 );
 
@@ -67,6 +189,13 @@ function receiveUpload(req: Request, res: Response, next: NextFunction): void {
     }
     next(error);
   });
+}
+
+function sendWorkbook(res: Response, result: { filename: string; body: Buffer }): void {
+  res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+  res.setHeader("Content-Disposition", contentDisposition(result.filename));
+  res.setHeader("Cache-Control", "no-store");
+  res.status(200).send(result.body);
 }
 
 function contentDisposition(filename: string): string {

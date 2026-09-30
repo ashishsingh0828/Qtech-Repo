@@ -5,6 +5,7 @@ export class ApiError extends Error {
   readonly code: ErrorCode | "UNKNOWN";
   readonly requestId?: string;
   readonly details?: unknown;
+  readonly body?: Record<string, unknown>;
 
   constructor(
     message: string,
@@ -12,6 +13,7 @@ export class ApiError extends Error {
     code: ErrorCode | "UNKNOWN",
     requestId?: string,
     details?: unknown,
+    body?: Record<string, unknown>,
   ) {
     super(message);
     this.name = "ApiError";
@@ -19,6 +21,7 @@ export class ApiError extends Error {
     this.code = code;
     this.requestId = requestId;
     this.details = details;
+    this.body = body;
   }
 }
 
@@ -74,6 +77,7 @@ export async function api<T>(path: string, request: ApiRequest = {}): Promise<T>
       code,
       typeof record.requestId === "string" ? record.requestId : undefined,
       record.details,
+      record,
     );
   }
 

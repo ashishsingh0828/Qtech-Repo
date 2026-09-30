@@ -1,6 +1,6 @@
 import type { NavIcon, NavItem } from "@app/shared";
 import { ROLE_REGISTRY } from "@app/shared";
-import { LogOut, Menu, Shield, Table, Users, X } from "lucide-react";
+import { LogOut, Menu, Rows3, Shield, Table, Users, X } from "lucide-react";
 import { useEffect, useState, type ComponentType } from "react";
 import { createPortal } from "react-dom";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
@@ -14,8 +14,10 @@ import { cn } from "../../lib/utils";
 import { useAuth } from "../auth/auth-gate";
 import { ChangePasswordDialog } from "../auth/change-password-dialog";
 import { endSession } from "../auth/session";
+import { DatasetSwitcher } from "../records/dataset-switcher";
 
 const ICONS: Record<NavIcon, ComponentType<{ className?: string; strokeWidth?: number }>> = {
+  rows: Rows3,
   table: Table,
   users: Users,
   shield: Shield,
@@ -61,9 +63,10 @@ export function AppShell() {
       </aside>
       <div className="flex min-h-0 min-w-0 flex-col">
         <header className="z-topbar flex h-[var(--topbar-h)] shrink-0 items-center gap-3 border-b border-hairline bg-surface px-4 md:px-6">
-          <NavLink to="/" className="min-w-0 truncate font-serif text-lg text-ink xl:hidden">
+          <NavLink to="/" className="min-w-0 shrink truncate font-serif text-lg text-ink xl:hidden">
             {appName}
           </NavLink>
+          <DatasetSwitcher />
           <div className="ml-auto">
             <Popover>
               <PopoverTrigger asChild>

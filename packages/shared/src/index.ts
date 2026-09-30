@@ -30,6 +30,8 @@ export {
 export { ERROR_CODES, ERROR_STATUS } from "./errors";
 export type { ErrorCode } from "./errors";
 export type { DomainEvent } from "./events";
+export { TEXT_SEARCH_TYPES, normalizeCellValue } from "./cellValue";
+export type { NormalizeResult, NormalizedCell } from "./cellValue";
 export { isServerManagedField } from "./fields";
 export {
   CANONICAL_GROUPS,
@@ -81,6 +83,16 @@ export type {
   RoleGroupAccessDefault,
   StoredAccessRole,
 } from "./permissions";
+export {
+  derivedDays,
+  groupForColumn,
+  liveColumn,
+  projectSchema,
+  projectValues,
+  readField,
+  storedCell,
+} from "./projection";
+export type { CellHistoryEntry, DatasetDetail, RecentEdit, RowProjection, StoredCell } from "./projection";
 export { NAV_ICONS, ROLE_REGISTRY, ROLES, isRole } from "./roles";
 export type { NavIcon, NavItem, Role, RoleDefinition } from "./roles";
 export {

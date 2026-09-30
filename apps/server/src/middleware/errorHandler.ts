@@ -7,14 +7,13 @@ export function errorHandler(error: unknown, req: Request, res: Response, _next:
   const requestId = req.requestId || "unknown";
 
   if (error instanceof AppError) {
-    res.status(error.status).json(
-      errorBody({
-        error: error.message,
-        code: error.code,
-        requestId,
-        details: error.details,
-      }),
-    );
+    const body = errorBody({
+      error: error.message,
+      code: error.code,
+      requestId,
+      details: error.details,
+    });
+    res.status(error.status).json(error.extras ? { ...body, ...error.extras } : body);
     return;
   }
 
