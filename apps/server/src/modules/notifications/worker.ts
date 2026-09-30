@@ -1,5 +1,6 @@
 import { NOTIFY_MERGE_SECONDS, type Role, isAmcDue } from "@app/shared";
-import { Prisma, type Priority } from "@prisma/client";
+import type { Prisma} from "@prisma/client";
+import { type Priority } from "@prisma/client";
 import { toSharedRole } from "../../lib/account";
 import { publishEvent } from "../../lib/events";
 import { logger } from "../../lib/logger";

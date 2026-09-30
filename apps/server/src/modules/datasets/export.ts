@@ -1,6 +1,6 @@
 import type { DatasetColumn, DatasetSchema, Permissions } from "@app/shared";
 import { canViewGroup, normalizeGroupKey } from "@app/shared";
-import { Workbook, type Cell } from "exceljs";
+import { Workbook, type Cell } from "../../lib/exceljs";
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 

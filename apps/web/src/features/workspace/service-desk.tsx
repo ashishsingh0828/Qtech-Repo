@@ -317,11 +317,12 @@ function LogCallDialog({
           <DialogDescription>Attach the call to a live contract on the agenda.</DialogDescription>
         </DialogHeader>
         <div className="flex flex-col gap-3 px-5 pb-2">
-          <Select value={rowId || undefined} onValueChange={setRowId}>
+          <Select value={rowId || "none"} onValueChange={(value) => setRowId(value === "none" ? "" : value)}>
             <SelectTrigger aria-label="Record">
               <SelectValue placeholder="Choose a record" />
             </SelectTrigger>
             <SelectContent>
+              <SelectItem value="none">Choose a record</SelectItem>
               {options.map((item) => (
                 <SelectItem key={item.rowId} value={item.rowId}>
                   {item.customer}

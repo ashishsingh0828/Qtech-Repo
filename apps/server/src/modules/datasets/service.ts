@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { DatasetSummary, PublicUser } from "@app/shared";
 import { canViewGroup, cleanLabel, parseDatasetSchema } from "@app/shared";
-import { Prisma } from "@prisma/client";
+import type { Prisma } from "@prisma/client";
 import { permissionsFor } from "../../lib/account";
 import { AppError } from "../../lib/errors";
 import { publishEvent } from "../../lib/events";

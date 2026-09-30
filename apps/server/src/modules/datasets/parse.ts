@@ -13,8 +13,8 @@ import {
   type DatasetGroup,
   type DatasetSchema,
 } from "@app/shared";
-import { ValueType, Workbook, type Cell, type Worksheet } from "exceljs";
 import { AppError } from "../../lib/errors";
+import { ValueType, Workbook, type Cell, type Worksheet } from "../../lib/exceljs";
 
 const MAX_COLUMNS = 512;
 

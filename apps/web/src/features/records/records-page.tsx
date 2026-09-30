@@ -422,7 +422,7 @@ export function RecordsPage() {
   const visibleColumnCount = detail.schema.columns.filter((column) => !hidden.has(column.key)).length;
 
   return (
-    <div className="flex h-[calc(100dvh-var(--topbar-h)-6rem)] min-h-0 min-w-0 flex-col gap-3 md:h-[calc(100dvh-var(--topbar-h)-3rem)] xl:h-[calc(100dvh-var(--topbar-h)-4rem)]">
+    <div className="flex min-w-0 flex-col gap-3 md:h-[calc(100dvh-var(--topbar-h)-3rem)] md:max-h-[calc(100dvh-var(--topbar-h)-3rem)] md:min-h-0 md:overflow-hidden xl:h-[calc(100dvh-var(--topbar-h)-4rem)] xl:max-h-[calc(100dvh-var(--topbar-h)-4rem)]">
       {deletedName(datasetId) ? (
         <div className="fixed inset-x-0 top-[var(--topbar-h)] z-popover flex flex-wrap items-center justify-between gap-3 border-b border-hairline bg-gold-soft px-4 py-3">
           <p className="text-sm text-ink">This dataset was deleted by {deletedName(datasetId)}</p>
@@ -510,7 +510,7 @@ export function RecordsPage() {
       {canStructure && autoNamedCount > 0 && !bannerDismissed ? (
         <div className="flex min-w-0 items-start justify-between gap-3 rounded-control border border-hairline bg-gold-soft px-3 py-2 text-sm text-ink">
           <p>
-            {autoNamedCount} columns had no header and were auto-named. Double-click a header to rename
+            {autoNamedCount} {autoNamedCount === 1 ? "column" : "columns"} had no header and {autoNamedCount === 1 ? "was" : "were"} auto-named. Rename it from the column header.
           </p>
           <button type="button" className="min-h-11 shrink-0 px-2" onClick={() => setBannerDismissed(true)}>
             Dismiss
@@ -553,10 +553,10 @@ export function RecordsPage() {
             <Button variant={recentOnly ? "primary" : "secondary"} onClick={() => setRecentOnly((value) => !value)}>
               Recently updated
             </Button>
-            <Button variant={density === "comfortable" ? "primary" : "secondary"} onClick={() => chooseDensity("comfortable")}>
+            <Button variant={density === "comfortable" ? "primary" : "secondary"} className="hidden md:inline-flex" onClick={() => chooseDensity("comfortable")}>
               Comfortable
             </Button>
-            <Button variant={density === "compact" ? "primary" : "secondary"} onClick={() => chooseDensity("compact")}>
+            <Button variant={density === "compact" ? "primary" : "secondary"} className="hidden md:inline-flex" onClick={() => chooseDensity("compact")}>
               Compact
             </Button>
             <Popover>
@@ -645,7 +645,7 @@ export function RecordsPage() {
               {activeRow.updatedByName ? ` by ${activeRow.updatedByName}` : ""}
             </p>
           ) : null}
-          <div className="hidden min-h-0 min-w-0 flex-1 md:flex">
+          <div className="hidden min-h-48 min-w-0 flex-1 md:flex">
             <RecordsGrid
               datasetId={datasetId}
               rows={filtered}
@@ -786,7 +786,7 @@ export function RecordsPage() {
           />
           <div className="flex min-w-0 flex-wrap items-center justify-between gap-2 text-sm text-ink-2">
             <p className="tabular-nums">
-              Showing {filtered.length === 0 ? "0-0" : `${range.start}-${range.end}`} of {filtered.length}
+              Showing {filtered.length === 0 ? "0-0" : `${range.end > 0 ? range.start : 1}-${range.end > 0 ? range.end : filtered.length}`} of {filtered.length}
             </p>
             <p className="tabular-nums">
               {visibleColumnCount} columns · {visibleGroups} groups

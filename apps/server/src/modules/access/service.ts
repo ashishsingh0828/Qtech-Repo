@@ -6,7 +6,7 @@ import {
   labelForGroupKey,
   normalizeAccess,
 } from "@app/shared";
-import { Prisma } from "@prisma/client";
+import type { Prisma } from "@prisma/client";
 import { toPrismaRole, toSharedRole } from "../../lib/account";
 import { AppError } from "../../lib/errors";
 import { publishEvent } from "../../lib/events";

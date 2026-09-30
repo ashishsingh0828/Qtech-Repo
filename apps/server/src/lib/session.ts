@@ -2,7 +2,7 @@ import { createHash, randomBytes } from "node:crypto";
 import type { Prisma } from "@prisma/client";
 import type { CookieOptions, Response } from "express";
 import { env } from "../env";
-import { prisma } from "./prisma";
+import type { prisma } from "./prisma";
 
 export const SESSION_COOKIE = "qsh_session";
 export const SESSION_TTL_MS = 8 * 60 * 60 * 1000;

@@ -13,7 +13,7 @@ export function DatasetSwitcher() {
   return (
     <div className="min-w-0 w-full max-w-[10rem] flex-1 sm:max-w-[16rem]">
       <Select
-        value={selected.id ?? undefined}
+        value={selected.id ?? ""}
         onValueChange={(datasetId) => {
           rememberDataset(user.id, datasetId);
           const onRecords = location.pathname === "/records" || location.pathname.startsWith("/records/");

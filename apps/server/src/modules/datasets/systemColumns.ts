@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { ColumnType, DatasetColumn, DatasetGroup, DatasetSchema } from "@app/shared";
 import { CANONICAL_GROUPS, GROUP_TINTS, cleanLabel, labelForGroupKey, parseDatasetSchema, todayInTimeZone } from "@app/shared";
-import { Prisma } from "@prisma/client";
+import type { Prisma } from "@prisma/client";
 import { env } from "../../env";
 import { logger } from "../../lib/logger";
 import { prisma } from "../../lib/prisma";

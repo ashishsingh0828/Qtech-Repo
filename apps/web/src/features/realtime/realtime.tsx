@@ -153,9 +153,9 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
 export function LiveStatus() {
   const { connected } = useRealtime();
   return (
-    <span className="inline-flex items-center gap-1.5 text-xs text-ink-2" aria-live="polite">
+    <span className="inline-flex items-center gap-1.5 text-xs text-ink-2" aria-live="polite" aria-label={connected ? "Live" : "Offline"}>
       <span className={`size-2 rounded-full ${connected ? "bg-emerald" : "bg-amber"}`} />
-      {connected ? "Live" : "Offline"}
+      <span className="hidden sm:inline">{connected ? "Live" : "Offline"}</span>
     </span>
   );
 }
