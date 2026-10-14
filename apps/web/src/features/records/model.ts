@@ -75,8 +75,61 @@ export function layoutColumns(
   const customer = shown.find(isCustomerName);
   const pinned = customer ? shown.slice(0, shown.findIndex((column) => column.key === customer.key) + 1) : [];
   const pinnedKeys = new Set(pinned.map((column) => column.key));
-  const pool = advanced ? shown : shown.filter((column) => column.groupId === activeGroupId);
+  // In Excel sheet mode (default), show all columns across all groups unless explicitly filtered to one group
+  const pool =
+    advanced || !activeGroupId || activeGroupId === "all"
+      ? shown
+      : shown.filter((column) => column.groupId === activeGroupId);
   return { pinned, scroll: pool.filter((column) => !pinnedKeys.has(column.key)) };
+}
+
+export function getColumnWidth(column: DatasetColumn): number {
+  if (column.width && column.width >= 60) return column.width;
+  const labelLen = column.label.length;
+  if (column.type === "date") return Math.max(130, labelLen * 8 + 36);
+  if (column.type === "yesno") return Math.max(110, labelLen * 8 + 36);
+  if (column.type === "integer") return Math.max(100, labelLen * 8 + 36);
+  if (column.type === "email" || /email/i.test(column.label) || /reason/i.test(column.label)) {
+    return Math.max(210, labelLen * 8 + 36);
+  }
+  return Math.max(150, Math.min(320, labelLen * 8 + 40));
+}
+
+export type BannerSegment = {
+  id: string;
+  label: string;
+  tint: string;
+  span: number;
+  width: number;
+  columns: DatasetColumn[];
+};
+
+export function bannerSegments(
+  columns: DatasetColumn[],
+  groups: DatasetGroup[],
+  getWidth: (col: DatasetColumn) => number = getColumnWidth,
+): BannerSegment[] {
+  const segments: BannerSegment[] = [];
+  for (const column of columns) {
+    const group = groups.find((item) => item.id === column.groupId);
+    const colW = getWidth(column);
+    const last = segments[segments.length - 1];
+    if (last && last.id === column.groupId) {
+      last.span += 1;
+      last.width += colW;
+      last.columns.push(column);
+    } else {
+      segments.push({
+        id: column.groupId,
+        label: group?.label ?? "General",
+        tint: group?.tint ?? "#F1EEE8",
+        span: 1,
+        width: colW,
+        columns: [column],
+      });
+    }
+  }
+  return segments;
 }
 
 export function applyView(
@@ -127,17 +180,6 @@ export function distinctCounts(rows: RowProjection[], column: DatasetColumn): Ar
   return [...counts.entries()]
     .map(([value, count]) => ({ value, count }))
     .sort((left, right) => left.value.localeCompare(right.value));
-}
-
-export function bannerSegments(columns: DatasetColumn[], groups: DatasetGroup[]): Array<{ label: string; tint: string; span: number }> {
-  const segments: Array<{ label: string; tint: string; span: number; id: string }> = [];
-  for (const column of columns) {
-    const group = groups.find((item) => item.id === column.groupId);
-    const last = segments[segments.length - 1];
-    if (last && last.id === column.groupId) last.span += 1;
-    else segments.push({ id: column.groupId, label: group?.label ?? "General", tint: group?.tint ?? "#F1EEE8", span: 1 });
-  }
-  return segments.map(({ label, tint, span }) => ({ label, tint, span }));
 }
 
 function matchesFilter(column: DatasetColumn, value: StoredCell | undefined, filter: ColumnFilter): boolean {

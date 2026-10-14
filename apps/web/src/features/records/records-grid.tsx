@@ -2,18 +2,26 @@ import type { CellHistoryEntry, DatasetColumn, DatasetGroup, RecentEdit, RowProj
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { formatDistanceToNow } from "date-fns";
 import { Check } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Button, Checkbox, Pill, Popover, PopoverContent, PopoverTrigger } from "../../components/ui";
 import { api } from "../../lib/api";
 import { formatWhen } from "../../lib/format";
 import { cn } from "../../lib/utils";
 import { CellEditor } from "./editors";
-import { bannerSegments, displayText, distinctCounts, statusTone, type ColumnFilter, type SortState } from "./model";
+import {
+  bannerSegments,
+  displayText,
+  distinctCounts,
+  getColumnWidth,
+  statusTone,
+  type BannerSegment,
+  type ColumnFilter,
+  type SortState,
+} from "./model";
 
-const CHECK_W = 44;
-const INDEX_W = 76;
-const COL_W = 168;
+const CHECK_W = 40;
+const INDEX_W = 56;
 
 type ActiveCell = { rowId: string; columnKey: string };
 
@@ -67,42 +75,43 @@ type GridProps = {
 
 export function RecordsGrid(props: GridProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
-  const columns = [...props.pinned, ...props.scrollColumns];
-  const pinnedWidth = CHECK_W + INDEX_W + props.pinned.length * COL_W;
+  const columns = useMemo(() => [...props.pinned, ...props.scrollColumns], [props.pinned, props.scrollColumns]);
+  const pinnedWidth = useMemo(
+    () => CHECK_W + INDEX_W + props.pinned.reduce((sum, col) => sum + getColumnWidth(col), 0),
+    [props.pinned],
+  );
+  const scrollWidth = useMemo(
+    () => props.scrollColumns.reduce((sum, col) => sum + getColumnWidth(col), 0),
+    [props.scrollColumns],
+  );
+  const totalWidth = Math.max(pinnedWidth + scrollWidth, 800);
+
   const rowVirtualizer = useVirtualizer({
     count: props.rows.length,
     getScrollElement: () => scrollRef.current,
     estimateSize: () => props.rowHeight,
-    overscan: 8,
+    overscan: 10,
   });
-  useEffect(() => {
-    if (!props.scrollRowId) return;
-    const index = props.rows.findIndex((row) => row.id === props.scrollRowId);
-    if (index >= 0) rowVirtualizer.scrollToIndex(index, { align: "center" });
-  }, [props.rows, props.scrollRowId, rowVirtualizer]);
-  const columnVirtualizer = useVirtualizer({
-    horizontal: true,
-    count: props.scrollColumns.length,
-    getScrollElement: () => scrollRef.current,
-    estimateSize: () => COL_W,
-    paddingStart: pinnedWidth,
-    overscan: 3,
-  });
+
   const virtualRows = rowVirtualizer.getVirtualItems();
-  const virtualColumns = columnVirtualizer.getVirtualItems();
-  const width = Math.max(pinnedWidth + props.scrollColumns.length * COL_W, columnVirtualizer.getTotalSize());
-  const { onRange } = props;
   const rangeStart = virtualRows[0]?.index;
   const rangeEnd = virtualRows[virtualRows.length - 1]?.index;
+  const { onRange } = props;
 
   useEffect(() => {
     onRange(rangeStart == null ? 0 : rangeStart + 1, rangeEnd == null ? 0 : rangeEnd + 1);
   }, [onRange, rangeStart, rangeEnd]);
 
+  useEffect(() => {
+    if (!props.scrollRowId) return;
+    const index = props.rows.findIndex((row) => row.id === props.scrollRowId);
+    if (index >= 0) rowVirtualizer.scrollToIndex(index, { align: "center" });
+  }, [props.rows, props.scrollRowId, rowVirtualizer]);
+
   function move(direction: "left" | "right" | "up" | "down" | "next" | "prev") {
     if (!props.activeCell || columns.length === 0 || props.rows.length === 0) return;
-    const rowIndex = Math.max(0, props.rows.findIndex((row) => row.id === props.activeCell?.rowId));
-    const columnIndex = Math.max(0, columns.findIndex((column) => column.key === props.activeCell?.columnKey));
+    const rowIndex = Math.max(0, props.rows.findIndex((row: RowProjection) => row.id === props.activeCell?.rowId));
+    const columnIndex = Math.max(0, columns.findIndex((column: DatasetColumn) => column.key === props.activeCell?.columnKey));
     let nextRow = rowIndex;
     let nextColumn = columnIndex;
     if (direction === "left" || direction === "prev") nextColumn -= 1;
@@ -125,14 +134,21 @@ export function RecordsGrid(props: GridProps) {
   }
 
   const allChecked = props.rows.length > 0 && props.rows.every((row) => props.selectedRows.has(row.id));
-  const headerColumns = props.advanced ? columns : columns;
+  const segments = useMemo(
+    () => bannerSegments(props.scrollColumns, props.groups, getColumnWidth),
+    [props.scrollColumns, props.groups],
+  );
+  const pinnedSegments = useMemo(
+    () => bannerSegments(props.pinned, props.groups, getColumnWidth),
+    [props.pinned, props.groups],
+  );
 
   return (
     <div
       ref={scrollRef}
       data-records-grid
       tabIndex={0}
-      className="h-full min-h-0 min-w-0 flex-1 overflow-auto rounded-card border border-hairline bg-surface outline-none"
+      className="h-full min-h-0 min-w-0 flex-1 overflow-auto rounded-card border border-hairline bg-surface outline-none shadow-sm"
       onKeyDown={(event) => {
         if (props.editor) return;
         if (!props.activeCell) return;
@@ -153,8 +169,8 @@ export function RecordsGrid(props: GridProps) {
           move(event.shiftKey ? "prev" : "next");
         } else if (event.key === "Enter" || event.key === "F2") {
           event.preventDefault();
-          const row = props.rows.find((item) => item.id === props.activeCell?.rowId);
-          const column = columns.find((item) => item.key === props.activeCell?.columnKey);
+          const row = props.rows.find((item: RowProjection) => item.id === props.activeCell?.rowId);
+          const column = columns.find((item: DatasetColumn) => item.key === props.activeCell?.columnKey);
           if (!row || !column) return;
           if (!props.canEditColumn(column)) props.onReadOnly(column);
           else props.onStartEdit(row, column);
@@ -163,140 +179,147 @@ export function RecordsGrid(props: GridProps) {
         }
       }}
     >
-      <div style={{ width, minHeight: "100%" }}>
-        <div className="sticky top-0 z-sticky border-b border-hairline bg-surface">
-          {props.advanced ? (
-            <div className="relative h-7" style={{ width }}>
-              <div className="sticky left-0 z-sticky float-left flex h-7 bg-surface" style={{ width: CHECK_W + INDEX_W }} />
-              {bannerSegments(props.pinned, props.groups).map((segment, index) => (
-                <div
-                  key={`${segment.label}-${index}`}
-                  className="group-label sticky z-sticky float-left flex h-7 items-center truncate px-2 text-ink"
-                  style={{ width: segment.span * COL_W, backgroundColor: segment.tint, left: CHECK_W + INDEX_W }}
-                >
-                  {segment.label}
-                </div>
-              ))}
-              {virtualColumns.map((virtualColumn) => {
-                const column = props.scrollColumns[virtualColumn.index];
-                if (!column) return null;
-                const group = props.groups.find((item) => item.id === column.groupId);
-                const previous = props.scrollColumns[virtualColumn.index - 1];
-                if (previous && previous.groupId === column.groupId) return null;
-                let span = 1;
-                for (let cursor = virtualColumn.index + 1; cursor < props.scrollColumns.length; cursor += 1) {
-                  if (props.scrollColumns[cursor]?.groupId !== column.groupId) break;
-                  span += 1;
-                }
-                return (
-                  <div
-                    key={column.groupId}
-                    className="group-label absolute top-0 flex h-7 items-center truncate px-2 text-ink"
-                    style={{ left: virtualColumn.start, width: span * COL_W, backgroundColor: group?.tint ?? "#F1EEE8" }}
-                  >
-                    {group?.label ?? "General"}
-                  </div>
-                );
-              })}
-            </div>
-          ) : null}
-          <div className="relative flex h-8" style={{ width }}>
+      <div style={{ width: totalWidth, minWidth: "100%", minHeight: "100%", position: "relative" }}>
+        {/* ROW 1: GROUP BANNERS (Row 1 from Excel) */}
+        <div className="sticky top-0 z-20 flex h-7 border-b border-hairline bg-surface" style={{ width: totalWidth, minWidth: "100%" }}>
+          <div
+            className="sticky left-0 z-30 flex h-7 shrink-0 items-center border-r border-hairline bg-surface-2 px-2 text-[10px] font-semibold uppercase tracking-[0.06em] text-muted shadow-[2px_0_4px_rgba(20,23,31,0.03)]"
+            style={{ width: CHECK_W + INDEX_W }}
+          />
+          {pinnedSegments.map((segment: BannerSegment, idx: number) => (
             <div
-              className="sticky left-0 z-sticky flex h-8 shrink-0 border-r border-hairline bg-surface shadow-[4px_0_8px_rgba(20,23,31,0.06)]"
-              style={{ width: pinnedWidth }}
+              key={`pinned-seg-${segment.id}-${idx}`}
+              className="sticky z-30 flex h-7 shrink-0 items-center justify-center truncate border-r border-hairline px-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-ink"
+              style={{ width: segment.width, backgroundColor: segment.tint }}
             >
-              <div className="flex items-center justify-center" style={{ width: CHECK_W }}>
-                <CheckBox
-                  label="Select all rows"
-                  checked={allChecked}
-                  onChange={(checked) => props.onToggleAll(checked)}
-                />
-              </div>
-              <HeaderCell label="Row" width={INDEX_W} />
-              {props.pinned.map((column) => (
-                <ColumnHeader
-                  key={column.key}
-                  column={column}
-                  width={COL_W}
-                  rows={props.allRows}
-                  filters={props.filters}
-                  sort={props.sort}
-                  onFilter={props.onFilter}
-                  onSort={props.onSort}
-                  canStructure={props.canStructure}
-                  onRename={props.onRenameColumn}
-                  onInsert={props.onInsertColumn}
-                  onMove={props.onMoveColumn}
-                  onHide={props.onHideColumn}
-                  onDelete={props.onDeleteColumn}
-                />
-              ))}
+              {segment.label}
             </div>
-            <div className="relative h-8" style={{ width: width - pinnedWidth }}>
-              {virtualColumns.map((virtualColumn) => {
-                const column = props.scrollColumns[virtualColumn.index];
-                if (!column) return null;
-                return (
-                  <div key={column.key} className="absolute top-0 h-8" style={{ left: virtualColumn.start - pinnedWidth, width: virtualColumn.size }}>
-                    <ColumnHeader
-                      column={column}
-                      width={virtualColumn.size}
-                      rows={props.allRows}
-                      filters={props.filters}
-                      sort={props.sort}
-                      onFilter={props.onFilter}
-                      onSort={props.onSort}
-                      canStructure={props.canStructure}
-                      onRename={props.onRenameColumn}
-                      onInsert={props.onInsertColumn}
-                      onMove={props.onMoveColumn}
-                      onHide={props.onHideColumn}
-                      onDelete={props.onDeleteColumn}
-                    />
-                  </div>
-                );
-              })}
+          ))}
+          {segments.map((segment: BannerSegment, idx: number) => (
+            <div
+              key={`seg-${segment.id}-${idx}`}
+              className="flex h-7 shrink-0 items-center justify-center truncate border-r border-hairline px-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-ink"
+              style={{ width: segment.width, backgroundColor: segment.tint }}
+            >
+              {segment.label}
             </div>
-          </div>
+          ))}
         </div>
-        <div className="relative" style={{ height: rowVirtualizer.getTotalSize(), width }}>
+
+        {/* ROW 2: COLUMN HEADERS (Row 2 from Excel) */}
+        <div className="sticky top-7 z-20 flex h-8 border-b border-hairline bg-surface shadow-[0_1px_3px_rgba(20,23,31,0.04)]" style={{ width: totalWidth, minWidth: "100%" }}>
+          <div
+            className="sticky left-0 z-30 flex h-8 shrink-0 border-r border-hairline bg-surface shadow-[2px_0_4px_rgba(20,23,31,0.04)]"
+            style={{ width: CHECK_W + INDEX_W }}
+          >
+            <div className="flex items-center justify-center" style={{ width: CHECK_W }}>
+              <CheckBox
+                label="Select all rows"
+                checked={allChecked}
+                onChange={(checked) => props.onToggleAll(checked)}
+              />
+            </div>
+            <HeaderCell label="Row" width={INDEX_W} />
+          </div>
+          {props.pinned.map((column) => (
+            <div key={column.key} className="sticky z-30 shrink-0" style={{ width: getColumnWidth(column) }}>
+              <ColumnHeader
+                column={column}
+                width={getColumnWidth(column)}
+                rows={props.allRows}
+                filters={props.filters}
+                sort={props.sort}
+                onFilter={props.onFilter}
+                onSort={props.onSort}
+                canStructure={props.canStructure}
+                onRename={props.onRenameColumn}
+                onInsert={props.onInsertColumn}
+                onMove={props.onMoveColumn}
+                onHide={props.onHideColumn}
+                onDelete={props.onDeleteColumn}
+              />
+            </div>
+          ))}
+          {props.scrollColumns.map((column) => (
+            <div key={column.key} className="shrink-0" style={{ width: getColumnWidth(column) }}>
+              <ColumnHeader
+                column={column}
+                width={getColumnWidth(column)}
+                rows={props.allRows}
+                filters={props.filters}
+                sort={props.sort}
+                onFilter={props.onFilter}
+                onSort={props.onSort}
+                canStructure={props.canStructure}
+                onRename={props.onRenameColumn}
+                onInsert={props.onInsertColumn}
+                onMove={props.onMoveColumn}
+                onHide={props.onHideColumn}
+                onDelete={props.onDeleteColumn}
+              />
+            </div>
+          ))}
+        </div>
+
+        {/* ROW 3+: SPREADSHEET DATA ROWS */}
+        <div className="relative" style={{ height: rowVirtualizer.getTotalSize(), width: totalWidth, minWidth: "100%" }}>
           {virtualRows.map((virtualRow) => {
             const row = props.rows[virtualRow.index];
             if (!row) return null;
+            const isSelected = props.selectedRows.has(row.id);
             return (
-              <div key={row.id} className="absolute left-0 top-0 flex border-b border-hairline" style={{ height: virtualRow.size, transform: `translateY(${virtualRow.start}px)`, width }}>
+              <div
+                key={row.id}
+                className={cn(
+                  "absolute left-0 top-0 flex border-b border-hairline transition-colors hover:bg-surface-2/60",
+                  virtualRow.index % 2 === 1 ? "bg-[#FAF9F7]/70" : "bg-surface",
+                  isSelected && "bg-gold-soft/60 hover:bg-gold-soft/80",
+                )}
+                style={{
+                  height: virtualRow.size,
+                  transform: `translateY(${virtualRow.start}px)`,
+                  width: totalWidth,
+                  minWidth: "100%",
+                }}
+              >
                 <div
-                  className="sticky left-0 z-sticky flex shrink-0 border-r border-hairline bg-surface shadow-[4px_0_8px_rgba(20,23,31,0.06)]"
-                  style={{ width: pinnedWidth, height: virtualRow.size }}
+                  className="sticky left-0 z-10 flex shrink-0 border-r border-hairline bg-surface shadow-[2px_0_4px_rgba(20,23,31,0.04)]"
+                  style={{ width: CHECK_W + INDEX_W, height: virtualRow.size }}
                 >
                   <div className="flex items-center justify-center" style={{ width: CHECK_W }}>
                     <CheckBox
                       label={`Select row ${row.position}`}
-                      checked={props.selectedRows.has(row.id)}
+                      checked={isSelected}
                       onChange={(checked) => props.onToggleRow(row.id, checked)}
                     />
                   </div>
-                  <RowIndex row={props.rows[virtualRow.index] ?? row} width={INDEX_W} canManage={props.canManage} onInsert={props.onInsert} onDuplicate={props.onDuplicate} onDelete={props.onDelete} onOpen={props.onOpenRow} />
-                  {props.pinned.map((column) => (
-                    <DataCell key={column.key} row={row} column={column} width={COL_W} grid={props} />
-                  ))}
+                  <RowIndex
+                    row={row}
+                    width={INDEX_W}
+                    canManage={props.canManage}
+                    onInsert={props.onInsert}
+                    onDuplicate={props.onDuplicate}
+                    onDelete={props.onDelete}
+                    onOpen={props.onOpenRow}
+                  />
                 </div>
-                {virtualColumns.map((virtualColumn) => {
-                  const column = props.scrollColumns[virtualColumn.index];
-                  if (!column) return null;
-                  return (
-                    <div key={column.key} className="absolute top-0" style={{ left: virtualColumn.start, width: virtualColumn.size, height: virtualRow.size }}>
-                      <DataCell row={row} column={column} width={virtualColumn.size} grid={props} />
-                    </div>
-                  );
-                })}
+                {props.pinned.map((column) => (
+                  <div key={column.key} className="sticky z-10 shrink-0" style={{ width: getColumnWidth(column) }}>
+                    <DataCell row={row} column={column} width={getColumnWidth(column)} grid={props} />
+                  </div>
+                ))}
+                {props.scrollColumns.map((column) => (
+                  <div key={column.key} className="shrink-0" style={{ width: getColumnWidth(column) }}>
+                    <DataCell row={row} column={column} width={getColumnWidth(column)} grid={props} />
+                  </div>
+                ))}
               </div>
             );
           })}
         </div>
         {props.rows.length === 0 ? <p className="px-4 py-8 text-sm text-ink-2">No rows match.</p> : null}
       </div>
-      <span className="sr-only">{headerColumns.length} columns</span>
+      <span className="sr-only">{columns.length} columns</span>
     </div>
   );
 }

@@ -79,8 +79,8 @@ export function RecordsPage() {
   const linkHandled = useRef("");
   const { user, permissions, countryCode } = useAuth();
   const searchRef = useRef<HTMLInputElement>(null);
-  const [groupId, setGroupId] = useState("");
-  const [advanced, setAdvanced] = useState(false);
+  const [groupId, setGroupId] = useState("all");
+  const advanced = true;
   const [density, setDensity] = useState<Density>(() => readDensity(user.id));
   const [hidden, setHidden] = useState<Set<string>>(new Set());
   const [hiddenFor, setHiddenFor] = useState("");
@@ -178,11 +178,11 @@ export function RecordsPage() {
 
   useEffect(() => {
     if (!detail) return;
+    if (groupId === "all") return;
     const usable = detail.schema.groups.filter((group) => detail.schema.columns.some((column) => column.groupId === group.id));
     if (usable.some((group) => group.id === groupId)) return;
-    const editable = usable.find((group) => canEditGroup(permissions.groupAccess, group.groupKey));
-    setGroupId(editable?.id ?? usable[0]?.id ?? "");
-  }, [detail, groupId, permissions.groupAccess]);
+    setGroupId("all");
+  }, [detail, groupId]);
 
   useEffect(() => {
     if (!detail || hiddenFor === detail.id) return;
@@ -482,8 +482,12 @@ export function RecordsPage() {
               </PopoverContent>
             </Popover>
             {showAdvanced ? (
-              <Button variant={advanced ? "primary" : "secondary"} className="hidden md:inline-flex" onClick={() => setAdvanced((value) => !value)}>
-                All columns
+              <Button
+                variant={groupId === "all" ? "primary" : "secondary"}
+                className="hidden md:inline-flex"
+                onClick={() => setGroupId((cur) => (cur === "all" ? displayGroups[0]?.id ?? "all" : "all"))}
+              >
+                {groupId === "all" ? "Excel View" : "All columns"}
               </Button>
             ) : null}
           </>
@@ -527,6 +531,12 @@ export function RecordsPage() {
         <>
           <Tabs value={groupId} onValueChange={setGroupId}>
             <TabsList>
+              <TabsTrigger value="all">
+                <span className="inline-flex min-w-0 items-center gap-2">
+                  <span className="truncate font-medium">All Groups (Excel View)</span>
+                  <Badge>{detail.schema.columns.length}</Badge>
+                </span>
+              </TabsTrigger>
               {displayGroups.map((group) => {
                 const count = detail.schema.columns.filter((column) => column.groupId === group.id).length;
                 const locked = !canEditGroup(permissions.groupAccess, group.groupKey);
