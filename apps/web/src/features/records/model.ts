@@ -92,7 +92,14 @@ export function applyView(
   const byKey = new Map(columns.map((column) => [column.key, column]));
   let next = rows.filter((row) => {
     if (recentOnly && new Date(row.updatedAt).getTime() < recentSince) return false;
-    if (needle && !columns.some((column) => displayText(column, row.values[column.key]).toLowerCase().includes(needle))) {
+    if (
+      needle &&
+      !columns.some((column) => {
+        const val = row.values[column.key];
+        if (val != null && String(val).toLowerCase().includes(needle)) return true;
+        return displayText(column, val).toLowerCase().includes(needle);
+      })
+    ) {
       return false;
     }
     return Object.entries(filters).every(([key, filter]) => {

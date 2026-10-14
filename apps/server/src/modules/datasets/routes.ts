@@ -13,16 +13,19 @@ import {
   cellHistory,
   createRow,
   deleteRow,
+  deleteRows,
   duplicateRow,
   getDatasetDetail,
   listRows,
   recentEdits,
   restoreRow,
+  restoreRows,
   updateRow,
 } from "./rows";
 import {
   addColumnSchema,
   addGroupSchema,
+  bulkRowsSchema,
   columnParamsSchema,
   createRowSchema,
   datasetParamsSchema,
@@ -171,6 +174,39 @@ datasetsRouter.post(
   asyncHandler(async (req, res) => {
     const { params } = validated<typeof rowParamsSchema._output>(req);
     const result = await restoreRow(currentUser(req), params.id, params.rowId);
+    res.status(200).json(result);
+  }),
+);
+
+datasetsRouter.post(
+  "/:id/rows/bulk-delete",
+  requireCapability("manageRows"),
+  validate(bulkRowsSchema),
+  asyncHandler(async (req, res) => {
+    const { params, body } = validated<typeof bulkRowsSchema._output>(req);
+    const result = await deleteRows(currentUser(req), params.id, body.rowIds);
+    res.status(200).json(result);
+  }),
+);
+
+datasetsRouter.delete(
+  "/:id/rows",
+  requireCapability("manageRows"),
+  validate(bulkRowsSchema),
+  asyncHandler(async (req, res) => {
+    const { params, body } = validated<typeof bulkRowsSchema._output>(req);
+    const result = await deleteRows(currentUser(req), params.id, body.rowIds);
+    res.status(200).json(result);
+  }),
+);
+
+datasetsRouter.post(
+  "/:id/rows/bulk-restore",
+  requireCapability("manageRows"),
+  validate(bulkRowsSchema),
+  asyncHandler(async (req, res) => {
+    const { params, body } = validated<typeof bulkRowsSchema._output>(req);
+    const result = await restoreRows(currentUser(req), params.id, body.rowIds);
     res.status(200).json(result);
   }),
 );

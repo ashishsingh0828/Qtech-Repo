@@ -6,6 +6,7 @@ import {
   canViewGroup,
   effectiveAmcStatus,
   formatDisplayDate,
+  isServerManagedField,
   isWarrantyExpired,
   pmsEntryStatus,
   warrantyLiveStatus,
@@ -69,6 +70,8 @@ export function RecordDrawer({
   focusKeys,
   revision,
   onOpenChange,
+  onSave,
+  onDelete,
 }: {
   datasetId: string;
   row: RowProjection | null;
@@ -80,6 +83,8 @@ export function RecordDrawer({
   focusKeys: string[];
   revision: number;
   onOpenChange: (open: boolean) => void;
+  onSave?: (row: RowProjection, changes: Record<string, string | null>) => Promise<boolean>;
+  onDelete?: (row: RowProjection) => void;
 }) {
   const [calls, setCalls] = useState<CallItem[]>([]);
   const [activity, setActivity] = useState<ActivityItem[]>([]);
@@ -95,6 +100,9 @@ export function RecordDrawer({
   const [callText, setCallText] = useState("");
   const [resolveId, setResolveId] = useState<string | null>(null);
   const [resolveNote, setResolveNote] = useState("");
+  const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
+  const [fieldDrafts, setFieldDrafts] = useState<Record<string, string>>({});
+  const [savingFields, setSavingFields] = useState(false);
   const canCalls =
     canViewGroup(groupAccess, "complaint") || canViewGroup(groupAccess, "breakdown_calls");
   const preferred =
@@ -299,12 +307,103 @@ export function RecordDrawer({
                       ) : null}
                       {columns
                         .filter((column) => !hiddenInSection(group, column))
-                        .map((column) => (
-                          <p key={column.key} className="min-w-0 text-sm text-ink">
-                            <span className="text-ink-2">{column.label}: </span>
-                            <span className="break-words">{displayText(column, row.values[column.key]) || "—"}</span>
-                          </p>
-                        ))}
+                        .map((column) => {
+                          const isManaged =
+                            isServerManagedField(column.key) ||
+                            (column.semantic != null && isServerManagedField(column.semantic));
+                          const canEditCol = editable && !isManaged && onSave != null;
+                          if (editingGroupId === group.id && canEditCol) {
+                            return (
+                              <div key={column.key} className="flex flex-col gap-1">
+                                <Label className="text-xs text-ink-2">{column.label}</Label>
+                                <Input
+                                  value={
+                                    fieldDrafts[column.key] ??
+                                    (row.values[column.key] == null ? "" : String(row.values[column.key]))
+                                  }
+                                  onChange={(e) =>
+                                    setFieldDrafts((prev) => ({ ...prev, [column.key]: e.target.value }))
+                                  }
+                                  placeholder={column.label}
+                                  className="h-9 text-sm"
+                                />
+                              </div>
+                            );
+                          }
+                          return (
+                            <p key={column.key} className="min-w-0 text-sm text-ink">
+                              <span className="text-ink-2">{column.label}: </span>
+                              <span className="break-words">{displayText(column, row.values[column.key]) || "—"}</span>
+                            </p>
+                          );
+                        })}
+                      {editingGroupId === group.id ? (
+                        <div className="flex gap-2 pt-2">
+                          <Button
+                            size="sm"
+                            disabled={savingFields}
+                            onClick={async () => {
+                              if (!onSave || !row) return;
+                              setSavingFields(true);
+                              try {
+                                const changes: Record<string, string | null> = {};
+                                for (const [k, v] of Object.entries(fieldDrafts)) {
+                                  changes[k] = v.trim() === "" ? null : v.trim();
+                                }
+                                await onSave(row, changes);
+                                setEditingGroupId(null);
+                                setFieldDrafts({});
+                              } finally {
+                                setSavingFields(false);
+                              }
+                            }}
+                          >
+                            {savingFields ? <Spinner /> : null} Save changes
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            disabled={savingFields}
+                            onClick={() => {
+                              setEditingGroupId(null);
+                              setFieldDrafts({});
+                            }}
+                          >
+                            Cancel
+                          </Button>
+                        </div>
+                      ) : editable &&
+                        onSave &&
+                        columns.some(
+                          (c) =>
+                            !hiddenInSection(group, c) &&
+                            !isServerManagedField(c.key) &&
+                            (c.semantic == null || !isServerManagedField(c.semantic)),
+                        ) ? (
+                        <div className="pt-1">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-7 px-2 text-xs text-ink-2 hover:text-ink"
+                            onClick={() => {
+                              setEditingGroupId(group.id);
+                              const initial: Record<string, string> = {};
+                              for (const col of columns) {
+                                if (
+                                  !isServerManagedField(col.key) &&
+                                  (col.semantic == null || !isServerManagedField(col.semantic))
+                                ) {
+                                  initial[col.key] =
+                                    row.values[col.key] == null ? "" : String(row.values[col.key]);
+                                }
+                              }
+                              setFieldDrafts(initial);
+                            }}
+                          >
+                            Edit fields
+                          </Button>
+                        </div>
+                      ) : null}
                     </div>
                   </details>
                 );
@@ -350,6 +449,22 @@ export function RecordDrawer({
                   ))}
                 </ul>
               </section>
+              {onDelete ? (
+                <div className="flex items-center justify-between border-t border-hairline pt-3">
+                  <span className="text-xs text-muted">Position #{row.position}</span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-xs text-ruby hover:bg-ruby/10 hover:text-ruby"
+                    onClick={() => {
+                      onDelete(row);
+                      onOpenChange(false);
+                    }}
+                  >
+                    Delete row
+                  </Button>
+                </div>
+              ) : null}
             </div>
           </div>
         ) : null}

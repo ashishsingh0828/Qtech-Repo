@@ -627,6 +627,13 @@ function RowIndex({
           </PopoverTrigger>
           <PopoverContent className="w-52">
             <div className="flex flex-col">
+              <button
+                type="button"
+                className="min-h-11 rounded-control px-2 text-left text-sm font-medium hover:bg-surface-2"
+                onClick={() => onOpen?.(row)}
+              >
+                Edit / View row
+              </button>
               <button type="button" className="min-h-11 rounded-control px-2 text-left text-sm hover:bg-surface-2" onClick={() => onInsert(row.id, "above")}>
                 Insert row above
               </button>

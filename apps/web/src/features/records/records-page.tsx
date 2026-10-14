@@ -11,7 +11,7 @@ import {
 } from "@app/shared";
 import { useQuery } from "@tanstack/react-query";
 import { formatDistanceToNow } from "date-fns";
-import { Lock } from "lucide-react";
+import { Edit3, Filter, Lock, Search, Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
@@ -109,6 +109,7 @@ export function RecordsPage() {
   const [scrollRowId, setScrollRowId] = useState<string | null>(null);
   const [pulse, setPulse] = useState(false);
   const [assignOpen, setAssignOpen] = useState(false);
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
   const [validatorId, setValidatorId] = useState("");
   const [serviceId, setServiceId] = useState("");
   const showAdvanced = canRestore;
@@ -542,14 +543,40 @@ export function RecordsPage() {
             </TabsList>
           </Tabs>
           <div className="flex min-w-0 flex-wrap items-center gap-2">
-            <Input
-              ref={searchRef}
-              value={search}
-              placeholder="Search visible columns"
-              aria-label="Search"
-              data-search=""
-              className="max-w-xs"
-              onChange={(event) => setSearch(event.target.value)}
+            <div className="relative flex max-w-xs flex-1 items-center">
+              <Search className="pointer-events-none absolute left-3 size-4 text-muted" strokeWidth={1.5} />
+              <Input
+                ref={searchRef}
+                value={search}
+                placeholder="Search visible columns"
+                aria-label="Search"
+                data-search=""
+                className="pl-9 pr-8"
+                onChange={(event) => setSearch(event.target.value)}
+              />
+              {search ? (
+                <button
+                  type="button"
+                  className="absolute right-2.5 text-xs text-muted hover:text-ink"
+                  onClick={() => setSearch("")}
+                  aria-label="Clear search"
+                >
+                  <X className="size-3.5" strokeWidth={1.5} />
+                </button>
+              ) : null}
+            </div>
+            <FilterPopover
+              columns={detail.schema.columns.filter((c) => !hidden.has(c.key))}
+              filters={filters}
+              onFilter={(key, filter) => {
+                setFilters((current) => {
+                  const next = { ...current };
+                  if (filter) next[key] = filter;
+                  else delete next[key];
+                  return next;
+                });
+              }}
+              onClearAll={() => setFilters({})}
             />
             <Button variant={recentOnly ? "primary" : "secondary"} onClick={() => setRecentOnly((value) => !value)}>
               Recently updated
@@ -797,8 +824,8 @@ export function RecordsPage() {
       )}
       {selected.size > 0 ? (
         <div className="fixed inset-x-4 bottom-20 z-popover flex min-w-0 flex-wrap items-center justify-between gap-2 rounded-card border border-hairline bg-surface px-4 py-3 shadow-float md:bottom-6">
-          <p className="text-sm text-ink">{selected.size} rows selected</p>
-          <div className="flex gap-2">
+          <p className="text-sm font-medium text-ink">{selected.size} {selected.size === 1 ? "row" : "rows"} selected</p>
+          <div className="flex flex-wrap gap-2">
             <Button
               variant="secondary"
               onClick={() => {
@@ -808,8 +835,19 @@ export function RecordsPage() {
                 setDrawerId(first);
               }}
             >
-              Open
+              <Edit3 className="size-3.5" strokeWidth={1.5} />
+              Edit
             </Button>
+            {canManage ? (
+              <Button
+                variant="secondary"
+                className="text-ruby hover:bg-ruby/10 hover:text-ruby"
+                onClick={() => setBulkDeleteOpen(true)}
+              >
+                <Trash2 className="size-3.5" strokeWidth={1.5} />
+                Delete {selected.size > 1 ? `(${selected.size})` : ""}
+              </Button>
+            ) : null}
             {canPerformAction(user.role, "validate", (key) => canEditGroup(permissions.groupAccess, key)) ? (
               <Button variant="secondary" onClick={() => void bulk("/bulk/validate", { rowIds: [...selected], result: "Yes" })}>
                 Validate Yes
@@ -848,6 +886,30 @@ export function RecordsPage() {
         focusGroupKey={drawerFocus}
         focusKeys={editedKeys}
         revision={revision}
+        onSave={(targetRow, changes) => saveChanges(targetRow, changes, targetRow.version)}
+        onDelete={
+          canManage
+            ? (targetRow) => {
+                setDrawerId(null);
+                void mutateRow(`/api/datasets/${datasetId}/rows/${targetRow.id}`, "DELETE", undefined).then((deleted) => {
+                  if (!deleted) return;
+                  setSelected((current) => {
+                    const next = new Set(current);
+                    next.delete(targetRow.id);
+                    return next;
+                  });
+                  toast("Row deleted.", {
+                    duration: 10_000,
+                    action: {
+                      label: "Undo",
+                      onClick: () =>
+                        void mutateRow(`/api/datasets/${datasetId}/rows/${targetRow.id}/restore`, "POST", undefined, "Row restored."),
+                    },
+                  });
+                });
+              }
+            : undefined
+        }
         onOpenChange={(open) => {
           if (!open) {
             setDrawerId(null);
@@ -962,6 +1024,67 @@ export function RecordsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <Dialog open={bulkDeleteOpen} onOpenChange={setBulkDeleteOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete {selected.size} {selected.size === 1 ? "row" : "rows"}?</DialogTitle>
+            <DialogDescription>
+              {selected.size === 1
+                ? "This row will be moved to Trash. You can undo this action immediately or restore it from Trash within 30 days."
+                : `These ${selected.size} rows will be moved to Trash. You can undo this action immediately or restore them from Trash within 30 days.`}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="secondary" onClick={() => setBulkDeleteOpen(false)} disabled={saving}>
+              Cancel
+            </Button>
+            <Button
+              className="bg-ruby text-canvas hover:bg-ruby"
+              disabled={saving}
+              onClick={async () => {
+                const ids = [...selected];
+                setSaving(true);
+                try {
+                  await api(`/api/datasets/${datasetId}/rows/bulk-delete`, {
+                    method: "POST",
+                    body: { rowIds: ids },
+                  });
+                  setSelected(new Set());
+                  setBulkDeleteOpen(false);
+                  await queryClient.invalidateQueries({ queryKey: ["dataset", datasetId] });
+                  await queryClient.invalidateQueries({ queryKey: ["dataset-rows", datasetId] });
+                  toast(`${ids.length} ${ids.length === 1 ? "row" : "rows"} deleted.`, {
+                    duration: 10_000,
+                    action: {
+                      label: "Undo",
+                      onClick: async () => {
+                        try {
+                          await api(`/api/datasets/${datasetId}/rows/bulk-restore`, {
+                            method: "POST",
+                            body: { rowIds: ids },
+                          });
+                          await queryClient.invalidateQueries({ queryKey: ["dataset", datasetId] });
+                          await queryClient.invalidateQueries({ queryKey: ["dataset-rows", datasetId] });
+                          toast.success("Rows restored.");
+                        } catch (err) {
+                          toast.error(errorText(err, "Failed to restore rows."));
+                        }
+                      },
+                    },
+                  });
+                } catch (err) {
+                  toast.error(errorText(err, "Failed to delete rows."));
+                } finally {
+                  setSaving(false);
+                }
+              }}
+            >
+              {saving ? <Spinner /> : null}
+              Delete {selected.size > 1 ? `${selected.size} rows` : "row"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 
@@ -1002,6 +1125,183 @@ export function RecordsPage() {
       if (!isUnauthenticated(error)) toast.error(errorText(error, "Could not export the workbook."));
     }
   }
+}
+
+function FilterPopover({
+  columns,
+  filters,
+  onFilter,
+  onClearAll,
+}: {
+  columns: DatasetColumn[];
+  filters: Record<string, ColumnFilter>;
+  onFilter: (key: string, filter: ColumnFilter | null) => void;
+  onClearAll: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [selectedKey, setSelectedKey] = useState<string>(() => columns[0]?.key ?? "");
+  const [containsText, setContainsText] = useState("");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
+
+  const activeCount = Object.keys(filters).length;
+  const currentColumn = columns.find((c) => c.key === selectedKey) ?? columns[0];
+
+  useEffect(() => {
+    if (!currentColumn) return;
+    const existing = filters[currentColumn.key];
+    if (existing?.kind === "contains") {
+      setContainsText(existing.text);
+      setFromDate("");
+      setToDate("");
+    } else if (existing?.kind === "dates") {
+      setFromDate(existing.from || "");
+      setToDate(existing.to || "");
+      setContainsText("");
+    } else {
+      setContainsText("");
+      setFromDate("");
+      setToDate("");
+    }
+  }, [currentColumn, filters]);
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button variant={activeCount > 0 ? "primary" : "secondary"} className="gap-1.5">
+          <Filter className="size-3.5" strokeWidth={1.5} />
+          Filter
+          {activeCount > 0 ? <Badge className="ml-0.5 px-1.5 py-0.5 text-xs">{activeCount}</Badge> : null}
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-80 p-4">
+        <div className="flex flex-col gap-3">
+          <div className="flex items-center justify-between">
+            <h4 className="text-sm font-medium text-ink">Filter rows</h4>
+            {activeCount > 0 ? (
+              <button
+                type="button"
+                className="text-xs text-muted hover:text-ruby"
+                onClick={() => {
+                  onClearAll();
+                  setContainsText("");
+                  setFromDate("");
+                  setToDate("");
+                }}
+              >
+                Clear all ({activeCount})
+              </button>
+            ) : null}
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label className="text-xs text-ink-2">Select column</Label>
+            <Select
+              value={currentColumn?.key ?? ""}
+              onValueChange={(key) => setSelectedKey(key)}
+            >
+              <SelectTrigger className="h-9 text-sm">
+                <SelectValue placeholder="Choose column" />
+              </SelectTrigger>
+              <SelectContent className="max-h-56">
+                {columns.map((column) => (
+                  <SelectItem key={column.key} value={column.key}>
+                    <span className="flex items-center gap-1.5">
+                      <span>{column.label}</span>
+                      {filters[column.key] ? <span className="text-xs text-gold">●</span> : null}
+                    </span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {currentColumn?.type === "date" ? (
+            <div className="flex flex-col gap-2">
+              <div className="flex flex-col gap-1">
+                <Label className="text-xs text-ink-2">From date</Label>
+                <Input
+                  type="date"
+                  value={fromDate}
+                  onChange={(e) => setFromDate(e.target.value)}
+                  className="h-9 text-sm"
+                />
+              </div>
+              <div className="flex flex-col gap-1">
+                <Label className="text-xs text-ink-2">To date</Label>
+                <Input
+                  type="date"
+                  value={toDate}
+                  onChange={(e) => setToDate(e.target.value)}
+                  className="h-9 text-sm"
+                />
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-1">
+              <Label className="text-xs text-ink-2">Filter text</Label>
+              <Input
+                placeholder={`Search in ${currentColumn?.label ?? "column"}...`}
+                value={containsText}
+                onChange={(e) => setContainsText(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && currentColumn) {
+                    if (containsText.trim()) {
+                      onFilter(currentColumn.key, { kind: "contains", text: containsText.trim() });
+                    } else {
+                      onFilter(currentColumn.key, null);
+                    }
+                    setOpen(false);
+                  }
+                }}
+                className="h-9 text-sm"
+              />
+            </div>
+          )}
+
+          <div className="flex items-center justify-between pt-1">
+            {currentColumn && filters[currentColumn.key] ? (
+              <Button
+                size="sm"
+                variant="ghost"
+                className="text-xs text-ruby hover:text-ruby"
+                onClick={() => {
+                  onFilter(currentColumn.key, null);
+                  setContainsText("");
+                  setFromDate("");
+                  setToDate("");
+                }}
+              >
+                Reset
+              </Button>
+            ) : <span />}
+            <Button
+              size="sm"
+              onClick={() => {
+                if (!currentColumn) return;
+                if (currentColumn.type === "date") {
+                  if (fromDate.trim() || toDate.trim()) {
+                    onFilter(currentColumn.key, { kind: "dates", from: fromDate.trim(), to: toDate.trim() });
+                  } else {
+                    onFilter(currentColumn.key, null);
+                  }
+                } else {
+                  if (containsText.trim()) {
+                    onFilter(currentColumn.key, { kind: "contains", text: containsText.trim() });
+                  } else {
+                    onFilter(currentColumn.key, null);
+                  }
+                }
+                setOpen(false);
+              }}
+            >
+              Apply filter
+            </Button>
+          </div>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
 }
 
 function FilterBar({

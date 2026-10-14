@@ -87,6 +87,16 @@ export const rowParamsSchema = z.object({
   params: rowParams,
 });
 
+export const bulkRowsSchema = z.object({
+  body: z
+    .object({
+      rowIds: z.array(z.string().uuid()).min(1).max(MAX_ROWS),
+    })
+    .strict(),
+  query: z.unknown(),
+  params: idParams,
+});
+
 export const historySchema = z.object({
   body: z.unknown(),
   query: z.object({

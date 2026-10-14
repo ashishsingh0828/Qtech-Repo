@@ -347,6 +347,95 @@ export async function restoreRow(
   return { row: toProjection(restored.row, projected.columns, schema), rowCount: restored.rowCount };
 }
 
+export async function deleteRows(
+  actor: PublicUser,
+  datasetId: string,
+  rowIds: string[],
+): Promise<{ deletedIds: string[]; rowCount: number }> {
+  await loadContext(actor, datasetId);
+  const actionId = randomUUID();
+  const { deletedIds, rowCount } = await prisma.$transaction(async (tx) => {
+    const existing = await tx.row.findMany({
+      where: { id: { in: rowIds }, datasetId, deletedAt: null },
+      select: { id: true },
+    });
+    if (existing.length === 0) {
+      const count = await tx.row.count({ where: { datasetId, deletedAt: null } });
+      return { deletedIds: [], rowCount: count };
+    }
+    const ids = existing.map((r) => r.id);
+    const now = new Date();
+    await tx.row.updateMany({
+      where: { id: { in: ids } },
+      data: { deletedAt: now, deletedById: actor.id },
+    });
+    await tx.activityLog.createMany({
+      data: ids.map((id) => ({
+        datasetId,
+        rowId: id,
+        actorId: actor.id,
+        actorName: actor.name,
+        action: "row.deleted",
+        actionId,
+      })),
+    });
+    for (const id of ids) {
+      await enqueueOutbox(tx, rowNotice(actor, datasetId, id, "row.deleted"), { actionId });
+    }
+    const count = await tx.row.count({ where: { datasetId, deletedAt: null } });
+    await tx.dataset.update({ where: { id: datasetId }, data: { rowCount: count } });
+    return { deletedIds: ids, rowCount: count };
+  });
+  for (const rowId of deletedIds) {
+    emit({ type: "row.deleted", datasetId, rowId, actorId: actor.id, actionId });
+  }
+  return { deletedIds, rowCount };
+}
+
+export async function restoreRows(
+  actor: PublicUser,
+  datasetId: string,
+  rowIds: string[],
+): Promise<{ restoredIds: string[]; rowCount: number }> {
+  await loadContext(actor, datasetId);
+  const actionId = randomUUID();
+  const { restoredIds, rowCount } = await prisma.$transaction(async (tx) => {
+    const existing = await tx.row.findMany({
+      where: { id: { in: rowIds }, datasetId, deletedAt: { not: null } },
+      select: { id: true },
+    });
+    if (existing.length === 0) {
+      const count = await tx.row.count({ where: { datasetId, deletedAt: null } });
+      return { restoredIds: [], rowCount: count };
+    }
+    const ids = existing.map((r) => r.id);
+    await tx.row.updateMany({
+      where: { id: { in: ids } },
+      data: { deletedAt: null, deletedById: null, updatedById: actor.id, updatedByName: actor.name },
+    });
+    await tx.activityLog.createMany({
+      data: ids.map((id) => ({
+        datasetId,
+        rowId: id,
+        actorId: actor.id,
+        actorName: actor.name,
+        action: "row.restored",
+        actionId,
+      })),
+    });
+    for (const id of ids) {
+      await enqueueOutbox(tx, rowNotice(actor, datasetId, id, "row.restored"), { actionId });
+    }
+    const count = await tx.row.count({ where: { datasetId, deletedAt: null } });
+    await tx.dataset.update({ where: { id: datasetId }, data: { rowCount: count } });
+    return { restoredIds: ids, rowCount: count };
+  });
+  for (const rowId of restoredIds) {
+    emit({ type: "row.restored", datasetId, rowId, actorId: actor.id, actionId });
+  }
+  return { restoredIds, rowCount };
+}
+
 export async function recentEdits(actor: PublicUser, datasetId: string): Promise<RecentEdit[]> {
   const { schema, permissions } = await loadContext(actor, datasetId);
   const projected = projectSchema(schema, permissions.groupAccess);
