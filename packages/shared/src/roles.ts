@@ -35,11 +35,11 @@ export const ROLE_COPY: Record<Role, { title: string; blurb: string }> = {
   },
   validator: {
     title: "Service Coordinator",
-    blurb: "Confirm customer and contract data, then keep validation moving.",
+    blurb: "Every open PM by month. Assign engineers and watch the reminder level.",
   },
   service: {
     title: "Service Engineer",
-    blurb: "Acknowledge, delay or close your PM visits. Closing records the visit done date.",
+    blurb: "Acknowledge, delay or close your PM visits. Closing needs a report and the customer OTP.",
   },
 };
 
@@ -49,41 +49,23 @@ export const ROLE_REGISTRY: Record<Role, RoleDefinition> = {
     homePath: "/",
     nav: [
       { id: "home", label: "Data and validation", hint: "Upload or download Excel", icon: "home", path: "/" },
-      { id: "records", label: "Contracts", hint: "All imported rows", icon: "rows", path: "/records" },
-      { id: "datasets", label: "Excel sheets", hint: "Workbooks", icon: "table", path: "/datasets" },
-      { id: "schema", label: "Schema", hint: "Groups and columns", icon: "schema", path: "/schema" },
-      { id: "team", label: "Team", hint: "People and workload", icon: "users", path: "/team" },
-      { id: "access", label: "Access", hint: "Who can edit each group", icon: "shield", path: "/access" },
-      { id: "activity", label: "Activity", hint: "What changed", icon: "activity", path: "/activity" },
-      { id: "trash", label: "Trash", hint: "Restore deleted items", icon: "trash", path: "/trash" },
+      { id: "records", label: "Contracts", hint: "Imported rows", icon: "rows", path: "/records" },
+      { id: "team", label: "Team", hint: "People", icon: "users", path: "/team" },
     ],
   },
   manager: {
     label: "Service Manager",
     homePath: "/",
-    nav: [
-      { id: "home", label: "Escalations", hint: "PMs and AMC follow-up", icon: "home", path: "/" },
-      { id: "records", label: "Contracts", hint: "All imported rows", icon: "rows", path: "/records" },
-      { id: "datasets", label: "Excel sheets", hint: "Workbooks", icon: "table", path: "/datasets" },
-      { id: "schema", label: "Schema", hint: "Groups and columns", icon: "schema", path: "/schema" },
-      { id: "activity", label: "Activity", hint: "What changed", icon: "activity", path: "/activity" },
-      { id: "trash", label: "Trash", hint: "Restore deleted items", icon: "trash", path: "/trash" },
-    ],
+    nav: [{ id: "home", label: "Escalations and renewals", hint: "Overdue PMs and AMC", icon: "home", path: "/" }],
   },
   validator: {
     label: "Service Coordinator",
     homePath: "/",
-    nav: [
-      { id: "home", label: "Validation desk", hint: "Confirm contract data", icon: "home", path: "/" },
-      { id: "records", label: "Contracts", hint: "All imported rows", icon: "rows", path: "/records" },
-    ],
+    nav: [{ id: "home", label: "Monthly PM calendar", hint: "Assign engineers", icon: "home", path: "/" }],
   },
   service: {
     label: "Service Engineer",
     homePath: "/",
-    nav: [
-      { id: "home", label: "My PMs and AMC", hint: "Acknowledge and close visits", icon: "home", path: "/" },
-      { id: "records", label: "Contracts", hint: "All imported rows", icon: "rows", path: "/records" },
-    ],
+    nav: [{ id: "home", label: "My PMs and AMC calls", hint: "Acknowledge, delay, close", icon: "home", path: "/" }],
   },
 };

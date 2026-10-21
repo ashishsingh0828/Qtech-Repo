@@ -38,9 +38,14 @@ export const verifyActionSchema = z.object({
 export const amcActionSchema = z.object({
   body: z
     .object({
-      action: z.enum(["proposal_sent", "acknowledge", "decline", "reset"]),
+      action: z.enum(["proposal_sent", "acknowledge", "decline", "reset", "pending", "delay"]),
       note: z.string().max(2000).optional(),
+      reason: z.string().max(200).optional(),
       date: dateOnlySchema.optional(),
+      chequeDate: dateOnlySchema.optional(),
+      document: z.string().max(200).optional(),
+      challengeId: z.uuid().optional(),
+      code: z.string().regex(/^\d{4}$/).optional(),
     })
     .strict(),
   query: z.unknown(),
@@ -50,9 +55,12 @@ export const amcActionSchema = z.object({
 export const pmsActionSchema = z.object({
   body: z
     .object({
-      action: z.enum(["markDone", "reschedule"]),
+      action: z.enum(["markDone", "reschedule", "acknowledge"]),
       n: z.number().int().min(1).max(100),
       date: dateOnlySchema.optional(),
+      reason: z.string().max(200).optional(),
+      remarks: z.string().max(2000).optional(),
+      report: z.string().max(200).optional(),
       challengeId: z.uuid().optional(),
       code: z.string().regex(/^\d{4}$/).optional(),
     })
@@ -62,7 +70,7 @@ export const pmsActionSchema = z.object({
 });
 
 export const rowOtpSchema = z.object({
-  body: z.object({ purpose: z.enum(["pms_close", "pms_delay"]) }).strict(),
+  body: z.object({ purpose: z.enum(["pms_close", "pms_delay", "amc_update"]) }).strict(),
   query: z.unknown(),
   params: datasetRow,
 });
@@ -78,6 +86,7 @@ export const assignActionSchema = z.object({
     .object({
       validatorId: z.uuid().nullable().optional(),
       serviceId: z.uuid().nullable().optional(),
+      engineer: z.string().max(120).optional(),
     })
     .strict(),
   query: z.unknown(),

@@ -56,6 +56,12 @@ export const kpisSchema = z.object({
   params: z.unknown(),
 });
 
+export const deskSchema = z.object({
+  body: z.unknown(),
+  query: z.object({ datasetId: z.preprocess(one, z.uuid()) }),
+  params: z.unknown(),
+});
+
 export const cardsSchema = z.object({
   body: z.unknown(),
   query: z.object({

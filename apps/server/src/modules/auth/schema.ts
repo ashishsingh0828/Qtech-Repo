@@ -5,7 +5,7 @@ export const loginSchema = z.object({
   body: z.object({
     email: emailSchema,
     password: z.string().min(1).max(200),
-    role: roleSchema,
+    role: roleSchema.optional(),
   }),
   query: z.unknown(),
   params: z.unknown(),

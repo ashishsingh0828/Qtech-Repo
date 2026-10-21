@@ -2,7 +2,8 @@ import { Router } from "express";
 import { asyncHandler } from "../../lib/asyncHandler";
 import { validate, validated } from "../../lib/validate";
 import { currentUser, requireAuth } from "../../middleware/auth";
-import { activityListSchema, cardsSchema, kpisSchema, searchSchema, workloadSchema } from "./schema";
+import { activityListSchema, cardsSchema, deskSchema, kpisSchema, searchSchema, workloadSchema } from "./schema";
+import { deskBoard } from "./desk";
 import { assertLead, datasetBoards, listFeed, roleKpis, searchHub, teamWorkload, workCards } from "./service";
 
 export const metricsRouter = Router();
@@ -66,6 +67,16 @@ searchRouter.get(
 export const workspaceRouter = Router();
 
 workspaceRouter.use(requireAuth);
+
+workspaceRouter.get(
+  "/desk",
+  validate(deskSchema),
+  asyncHandler(async (req, res) => {
+    const { query } = validated<typeof deskSchema._output>(req);
+    const result = await deskBoard(currentUser(req), query.datasetId);
+    res.status(200).json(result);
+  }),
+);
 
 workspaceRouter.get(
   "/cards",

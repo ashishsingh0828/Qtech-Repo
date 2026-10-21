@@ -18,7 +18,16 @@ import { NotificationBell } from "../notifications/bell";
 import { DatasetSwitcher } from "../records/dataset-switcher";
 import { LiveStatus, RealtimeProvider } from "../realtime/realtime";
 import { CommandPalette } from "../workspace/command-palette";
+import { isAccountsUser } from "../workspace/desk-kit";
 import { getActiveKey, setActiveKey } from "../workspace/keyboard";
+
+const DESK_NAV = [
+  { id: "engineer", title: "Service Engineer", hint: "My PMs and AMC calls" },
+  { id: "coordinator", title: "Service Coordinator", hint: "Monthly PM calendar" },
+  { id: "manager", title: "Service Manager", hint: "Escalations and renewals" },
+  { id: "accounts", title: "Accounts", hint: "AMC and cheques" },
+  { id: "admin", title: "Admin", hint: "Data and validation" },
+] as const;
 
 const ICONS: Record<NavIcon, ComponentType<{ className?: string; strokeWidth?: number }>> = {
   home: LayoutDashboard,
@@ -43,7 +52,8 @@ export function AppShell() {
   const appName = useAppName();
   const location = useLocation();
   const navigate = useNavigate();
-  const items = ROLE_REGISTRY[user.role].nav;
+  const items = ROLE_REGISTRY[user.role].nav.filter((item) => item.id !== "home");
+  const deskId = currentDesk(user);
   const [railOpen, setRailOpen] = useState(false);
   const [passwordOpen, setPasswordOpen] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
@@ -108,13 +118,15 @@ export function AppShell() {
     }
   }
 
-  const copy = ROLE_COPY[user.role];
+  const copy = isAccountsUser(user)
+    ? { title: "Accounts", blurb: "Follow AMC outcomes, cheque dates and accepted contracts." }
+    : ROLE_COPY[user.role];
 
   return (
     <RealtimeProvider>
     <div className="grid h-dvh grid-cols-1 overflow-hidden bg-canvas md:grid-cols-[64px_minmax(0,1fr)] xl:grid-cols-[244px_minmax(0,1fr)]">
       <aside className="hidden min-h-0 min-w-0 bg-navy text-[#c9dcdc] md:flex md:flex-col">
-        <Sidebar appName={appName} items={items} collapsed onOpenRail={() => setRailOpen(true)} />
+        <Sidebar appName={appName} items={items} deskId={deskId} collapsed onOpenRail={() => setRailOpen(true)} />
       </aside>
       <div className="flex min-h-0 min-w-0 flex-col">
         <header className="z-topbar flex h-[var(--topbar-h)] shrink-0 items-center gap-3 border-b border-hairline bg-surface px-4 md:px-6">
@@ -141,7 +153,7 @@ export function AppShell() {
               <PopoverContent align="end" className="w-64">
                 <div className="flex min-w-0 flex-col gap-2 px-1 pb-2">
                   <p className="truncate font-medium text-ink">{user.name}</p>
-                  <Pill tone={ROLE_TONE[user.role] ?? "stone"}>{ROLE_REGISTRY[user.role].label}</Pill>
+                  <Pill tone={ROLE_TONE[user.role] ?? "stone"}>{copy.title}</Pill>
                 </div>
                 <PopoverClose asChild>
                   <button
@@ -183,7 +195,7 @@ export function AppShell() {
                 onClick={() => setRailOpen(false)}
               />
               <div className="fixed inset-y-0 left-0 z-drawer flex w-[244px] max-w-[92vw] flex-col bg-navy text-[#c9dcdc] shadow-float">
-                <Sidebar appName={appName} items={items} onClose={() => setRailOpen(false)} />
+                <Sidebar appName={appName} items={items} deskId={deskId} onClose={() => setRailOpen(false)} />
               </div>
             </div>,
             document.body,
@@ -195,15 +207,25 @@ export function AppShell() {
   );
 }
 
+function currentDesk(user: { role: string; email: string }): (typeof DESK_NAV)[number]["id"] {
+  if (isAccountsUser(user)) return "accounts";
+  if (user.role === "admin") return "admin";
+  if (user.role === "manager") return "manager";
+  if (user.role === "validator") return "coordinator";
+  return "engineer";
+}
+
 function Sidebar({
   appName,
   items,
+  deskId,
   collapsed = false,
   onOpenRail,
   onClose,
 }: {
   appName: string;
   items: readonly NavItem[];
+  deskId: (typeof DESK_NAV)[number]["id"];
   collapsed?: boolean;
   onOpenRail?: () => void;
   onClose?: () => void;
@@ -240,7 +262,33 @@ function Sidebar({
           </IconButton>
         </div>
       ) : null}
-      <nav className="flex min-h-0 flex-1 flex-col gap-0.5" aria-label="Main">
+      <nav className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto" aria-label="Main">
+        {DESK_NAV.map((desk) => {
+          const active = desk.id === deskId;
+          const className = cn(
+            "relative flex min-h-11 min-w-0 items-center gap-3 rounded-[6px] border-l-[3px] px-3 py-2 text-left text-[15px]",
+            collapsed && "justify-center px-0 xl:justify-start xl:px-3",
+            active ? "border-l-gold bg-white/10 text-white" : "border-transparent text-[#c9dcdc] opacity-55",
+          );
+          const body = (
+            <span className={cn("min-w-0", collapsed && "hidden xl:block")}>
+              <span className="block truncate font-medium">{desk.title}</span>
+              <small className="block truncate text-[12px] text-[#85a2a4]">{desk.hint}</small>
+            </span>
+          );
+          if (active) {
+            return (
+              <NavLink key={desk.id} to="/" end className={className}>
+                {body}
+              </NavLink>
+            );
+          }
+          return (
+            <span key={desk.id} className={className} title="Sign in on that desk">
+              {body}
+            </span>
+          );
+        })}
         {items.map((item) => (
           <NavItemLink key={item.id} item={item} collapsed={collapsed} />
         ))}

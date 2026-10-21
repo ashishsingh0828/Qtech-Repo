@@ -1,479 +1,169 @@
-import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useState } from "react";
 import { toast } from "sonner";
-import {
-  Button,
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  Input,
-  Label,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-  Textarea,
-} from "../../components/ui";
-import { api } from "../../lib/api";
+import { Button, Input } from "../../components/ui";
 import { errorText, isUnauthenticated } from "../../lib/errors";
 import { useAuth } from "../auth/auth-gate";
-import { readWorkspace, writeWorkspace } from "../records/storage";
 import { rowAction } from "./actions";
-import { KpiRow, QuietEmpty, WorkList, WorkspaceHeader } from "./parts";
-import { CALL_TYPES, type WorkCardItem } from "./types";
-import { useCards } from "./use-cards";
+import {
+  AmcDialog,
+  CloseDialog,
+  DelayDialog,
+  DeskEmpty,
+  DeskHeader,
+  DeskTable,
+  DaysTag,
+  Panel,
+  ReminderTag,
+  StatusPill,
+  Td,
+  Th,
+  mineContract,
+  openPms,
+  showDate,
+  useDesk,
+  type DeskContract,
+  type DeskPm,
+} from "./desk-kit";
+import { QuietEmpty } from "./parts";
 import { useSelectedDataset } from "./use-dataset";
-
-const TABS = ["agenda", "amc", "calls", "followups"] as const;
-const BUCKETS = [
-  { key: "overdue", label: "Overdue" },
-  { key: "today", label: "Today" },
-  { key: "week", label: "This week" },
-  { key: "later", label: "Later" },
-] as const;
 
 export function ServiceDesk() {
   const { user } = useAuth();
-  const navigate = useNavigate();
   const selected = useSelectedDataset();
-  const saved = readWorkspace(user.id);
-  const initial = (TABS as readonly string[]).includes(saved.tab) ? (saved.tab as (typeof TABS)[number]) : "agenda";
-  const [tab, setTab] = useState<(typeof TABS)[number]>(initial);
-  const [reschedule, setReschedule] = useState<WorkCardItem | null>(null);
-  const [closeItem, setCloseItem] = useState<WorkCardItem | null>(null);
-  const [date, setDate] = useState("");
-  const [otp, setOtp] = useState("");
-  const [otpMeta, setOtpMeta] = useState<RowOtp | null>(null);
-  const [otpError, setOtpError] = useState("");
-  const [logOpen, setLogOpen] = useState(false);
-  const [resolveItem, setResolveItem] = useState<WorkCardItem | null>(null);
-  const [note, setNote] = useState("");
-  const [agendaQuery, setAgendaQuery] = useState("");
   const datasetId = selected.id;
-  const agenda = useCards(datasetId, "agenda");
-  const calls = useCards(datasetId, "calls");
-  const followups = useCards(datasetId, "followups");
+  const desk = useDesk(datasetId);
+  const [delay, setDelay] = useState<{ contract: DeskContract; pm: DeskPm } | null>(null);
+  const [close, setClose] = useState<{ contract: DeskContract; pm: DeskPm } | null>(null);
+  const [amc, setAmc] = useState<DeskContract | null>(null);
+  const mine = (desk.data?.contracts ?? []).filter((item) => mineContract(item, user));
+  const visits = mine.flatMap((contract) => openPms(contract).map((pm) => ({ contract, pm })));
+  const amcRows = mine.filter((item) => item.amc.state);
 
-  useEffect(() => {
-    writeWorkspace(user.id, { tab, mine: false, city: "", contract: "" });
-  }, [user.id, tab]);
-
-  function open(rowId: string) {
-    if (datasetId) void navigate(`/records/${datasetId}?row=${rowId}`);
-  }
-
-  async function act(item: WorkCardItem, path: string, body: unknown) {
+  async function acknowledge(contract: DeskContract, pm: DeskPm) {
     if (!datasetId) return;
     try {
-      await rowAction(datasetId, item.rowId, path, body);
+      await rowAction(datasetId, contract.rowId, "/actions/pms", { action: "acknowledge", n: pm.n });
     } catch (error) {
-      if (!isUnauthenticated(error)) toast.error(errorText(error, "Could not save."));
+      if (!isUnauthenticated(error)) toast.error(errorText(error, "Could not acknowledge this visit."));
     }
-  }
-
-  async function openPms(item: WorkCardItem, kind: "close" | "delay") {
-    setOtp("");
-    setOtpError("");
-    setOtpMeta(null);
-    setDate(item.scheduled ?? "");
-    if (kind === "close") setCloseItem(item);
-    else setReschedule(item);
-    if (!datasetId) return;
-    try {
-      const result = await api<RowOtp>(`/api/datasets/${datasetId}/rows/${item.rowId}/otp`, {
-        method: "POST",
-        body: { purpose: kind === "close" ? "pms_close" : "pms_delay" },
-      });
-      setOtpMeta(result);
-    } catch (error) {
-      if (!isUnauthenticated(error)) setOtpError(errorText(error, "Could not send the customer OTP."));
-    }
-  }
-
-  function otpFields() {
-    return otpMeta?.otpRequired ? { challengeId: otpMeta.challengeId, code: otp.trim() } : {};
-  }
-
-  function otpReady() {
-    if (!otpMeta) return false;
-    if (!otpMeta.otpRequired) return true;
-    return otp.trim().length === 4;
   }
 
   return (
-    <div className="flex flex-col gap-6">
-      <WorkspaceHeader />
-      <KpiRow datasetId={datasetId} />
+    <div className="flex flex-col gap-4">
+      <DeskHeader title="Service Engineer" subtitle="Acknowledge, delay or close your PM visits. Closing needs a report and the customer OTP." />
+      <label className="flex max-w-xs flex-col gap-1 text-sm text-ink-2">
+        Signed in as
+        <Input value={user.name} readOnly />
+      </label>
       {!selected.loading && !datasetId ? <QuietEmpty /> : null}
       {datasetId ? (
-        <Tabs value={tab} onValueChange={(value) => { if ((TABS as readonly string[]).includes(value)) setTab(value as (typeof TABS)[number]); }}>
-          <TabsList>
-            <TabsTrigger value="agenda">My PM visits</TabsTrigger>
-            <TabsTrigger value="amc">My AMC follow-ups</TabsTrigger>
-            <TabsTrigger value="calls">Calls</TabsTrigger>
-            <TabsTrigger value="followups">Follow-ups</TabsTrigger>
-          </TabsList>
-          <TabsContent value="agenda">
-            <div className="flex flex-col gap-6">
-              <Input data-search="" aria-label="Search" placeholder="Search" value={agendaQuery} onChange={(event) => setAgendaQuery(event.target.value)} />
-              {BUCKETS.map((bucket) => (
-                <section key={bucket.key} className="flex flex-col gap-3">
-                  <h2 className="text-xs font-medium uppercase tracking-wide text-ink-2">{bucket.label}</h2>
-                  <WorkList
-                    datasetId={datasetId}
-                    {...agenda}
-                    searchable={false}
-                    items={agenda.items.filter((item) => item.bucket === bucket.key && matches(item, agendaQuery))}
-                    hasMore={false}
-                    total={agenda.total}
-                    onOpen={open}
-                    empty="None here."
-                    renderActions={(item) => (
-                      <>
-                        <Button size="sm" disabled={item.pmsN == null} onClick={() => void openPms(item, "close")}>
-                          Close
+        <DeskEmpty loading={desk.isPending} error={desk.isError} empty={false}>
+          <Panel title="My PM visits">
+            {visits.length === 0 ? <p className="text-sm text-ink-2">No open visits assigned to you.</p> : null}
+            {visits.length > 0 ? (
+              <DeskTable>
+                <thead>
+                  <tr>
+                    <Th>PM date</Th>
+                    <Th>Machine</Th>
+                    <Th>Customer</Th>
+                    <Th>Status</Th>
+                    <Th>Reminder</Th>
+                    <Th />
+                  </tr>
+                </thead>
+                <tbody>
+                  {visits.map(({ contract, pm }) => (
+                    <tr key={`${contract.rowId}:${pm.n}`}>
+                      <Td className="tabular-nums">{showDate(pm.date)}</Td>
+                      <Td>
+                        <div className="font-medium text-ink">{contract.equip || "—"}</div>
+                        <div className="text-[13px] text-ink-2">{contract.serial}</div>
+                      </Td>
+                      <Td>
+                        <div className="font-medium text-ink">{contract.customer || "—"}</div>
+                        <div className="text-[13px] text-ink-2">{contract.city}</div>
+                      </Td>
+                      <Td>
+                        <StatusPill value={pm.state} />
+                      </Td>
+                      <Td>
+                        <ReminderTag item={pm.reminder} />
+                      </Td>
+                      <Td>
+                        <div className="flex flex-wrap gap-2">
+                          <Button size="sm" variant="secondary" onClick={() => void acknowledge(contract, pm)}>
+                            Acknowledge
+                          </Button>
+                          <Button size="sm" variant="secondary" onClick={() => setDelay({ contract, pm })}>
+                            Delay
+                          </Button>
+                          <Button size="sm" onClick={() => setClose({ contract, pm })}>
+                            Close
+                          </Button>
+                        </div>
+                      </Td>
+                    </tr>
+                  ))}
+                </tbody>
+              </DeskTable>
+            ) : null}
+          </Panel>
+          <Panel title="My AMC follow-ups">
+            {amcRows.length === 0 ? <p className="text-sm text-ink-2">No AMC calls on your contracts.</p> : null}
+            {amcRows.length > 0 ? (
+              <DeskTable>
+                <thead>
+                  <tr>
+                    <Th>Customer</Th>
+                    <Th>Machine</Th>
+                    <Th>Contract ends</Th>
+                    <Th>AMC follow-up</Th>
+                    <Th>Reminder</Th>
+                    <Th />
+                  </tr>
+                </thead>
+                <tbody>
+                  {amcRows.map((contract) => (
+                    <tr key={contract.rowId}>
+                      <Td>
+                        <div className="font-medium text-ink">{contract.customer || "—"}</div>
+                        <div className="text-[13px] text-ink-2">{contract.contact}</div>
+                      </Td>
+                      <Td>
+                        <div className="font-medium text-ink">{contract.equip || "—"}</div>
+                        <div className="text-[13px] text-ink-2">{contract.type}</div>
+                      </Td>
+                      <Td>
+                        <div>{showDate(contract.end)}</div>
+                        <DaysTag days={contract.daysLeft} />
+                      </Td>
+                      <Td>
+                        <StatusPill value={contract.amc.state || "Pending"} />
+                      </Td>
+                      <Td>
+                        <ReminderTag item={contract.amc.reminder} />
+                      </Td>
+                      <Td>
+                        <Button size="sm" variant="secondary" onClick={() => setAmc(contract)}>
+                          Update
                         </Button>
-                        <Button size="sm" variant="secondary" disabled={item.pmsN == null} onClick={() => void openPms(item, "delay")}>
-                          Delay
-                        </Button>
-                      </>
-                    )}
-                  />
-                </section>
-              ))}
-              {agenda.hasMore ? (
-                <Button variant="secondary" onClick={agenda.onLoadMore} disabled={agenda.loadingMore}>
-                  Load more
-                </Button>
-              ) : null}
-            </div>
-          </TabsContent>
-          <TabsContent value="amc">
-            <div className="flex flex-col gap-6">
-              <LeadColumn datasetId={datasetId} queue="amc_due" label="AMC due" onOpen={open} />
-              <LeadColumn datasetId={datasetId} queue="amc_proposal" label="Proposal sent" onOpen={open} />
-              <LeadColumn datasetId={datasetId} queue="amc_acknowledged" label="Acknowledged" onOpen={open} />
-              <LeadColumn datasetId={datasetId} queue="amc_declined" label="Declined" onOpen={open} />
-            </div>
-          </TabsContent>
-          <TabsContent value="calls">
-            <WorkList
-              datasetId={datasetId}
-              {...calls}
-              onOpen={open}
-              renderActions={(item) =>
-                item.callId ? (
-                  <Button size="sm" onClick={() => { setResolveItem(item); setNote(""); }}>
-                    Resolve call
-                  </Button>
-                ) : null
-              }
-            />
-            <Button className="fixed bottom-20 right-4 z-topbar shadow-float md:bottom-6" onClick={() => setLogOpen(true)}>
-              Log call
-            </Button>
-          </TabsContent>
-          <TabsContent value="followups">
-            <WorkList
-              datasetId={datasetId}
-              {...followups}
-              onOpen={open}
-              renderActions={(item) => (
-                <Input
-                  type="date"
-                  aria-label={`Next follow-up for ${item.customer}`}
-                  onChange={(event) => {
-                    if (event.target.value) void act(item, "/actions/followup", { date: event.target.value });
-                  }}
-                />
-              )}
-            />
-          </TabsContent>
-        </Tabs>
+                      </Td>
+                    </tr>
+                  ))}
+                </tbody>
+              </DeskTable>
+            ) : null}
+          </Panel>
+        </DeskEmpty>
       ) : null}
-      <Dialog open={closeItem != null} onOpenChange={(openDialog) => { if (!openDialog) setCloseItem(null); }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Close this PM</DialogTitle>
-            <DialogDescription>{closeItem?.customer}</DialogDescription>
-          </DialogHeader>
-          <div className="flex flex-col gap-3 px-5 pb-2">
-            <OtpFields meta={otpMeta} value={otp} error={otpError} onChange={setOtp} />
-          </div>
-          <DialogFooter>
-            <Button variant="secondary" onClick={() => setCloseItem(null)}>
-              Cancel
-            </Button>
-            <Button
-              disabled={!otpReady() || closeItem?.pmsN == null}
-              onClick={() => {
-                if (!closeItem || closeItem.pmsN == null) return;
-                void act(closeItem, "/actions/pms", { action: "markDone", n: closeItem.pmsN, ...otpFields() }).then(() => setCloseItem(null));
-              }}
-            >
-              Close
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-      <Dialog open={reschedule != null} onOpenChange={(openDialog) => { if (!openDialog) setReschedule(null); }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Delay this PM</DialogTitle>
-            <DialogDescription>{reschedule?.customer}</DialogDescription>
-          </DialogHeader>
-          <div className="flex flex-col gap-3 px-5 pb-2">
-            <div>
-              <Label htmlFor="pms-date">Date</Label>
-              <Input id="pms-date" type="date" value={date} onChange={(event) => setDate(event.target.value)} />
-            </div>
-            <OtpFields meta={otpMeta} value={otp} error={otpError} onChange={setOtp} />
-          </div>
-          <DialogFooter>
-            <Button variant="secondary" onClick={() => setReschedule(null)}>
-              Cancel
-            </Button>
-            <Button
-              disabled={!date || !otpReady() || reschedule?.pmsN == null}
-              onClick={() => {
-                if (!reschedule || reschedule.pmsN == null) return;
-                void act(reschedule, "/actions/pms", { action: "reschedule", n: reschedule.pmsN, date, ...otpFields() }).then(() => setReschedule(null));
-              }}
-            >
-              Save
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-      <LogCallDialog
-        open={logOpen}
-        datasetId={datasetId}
-        options={agenda.items}
-        onClose={() => setLogOpen(false)}
-      />
-      <Dialog open={resolveItem != null} onOpenChange={(openDialog) => { if (!openDialog) setResolveItem(null); }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Resolve call</DialogTitle>
-            <DialogDescription>{resolveItem?.customer}</DialogDescription>
-          </DialogHeader>
-          <div className="px-5 pb-2">
-            <Label htmlFor="resolve-note">Note</Label>
-            <Textarea id="resolve-note" value={note} onChange={(event) => setNote(event.target.value)} />
-          </div>
-          <DialogFooter>
-            <Button variant="secondary" onClick={() => setResolveItem(null)}>
-              Cancel
-            </Button>
-            <Button
-              disabled={!resolveItem?.callId}
-              onClick={() => {
-                if (!resolveItem?.callId) return;
-                void act(resolveItem, `/calls/${resolveItem.callId}/resolve`, { note }).then(() => setResolveItem(null));
-              }}
-            >
-              Resolve
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </div>
-  );
-}
-
-function matches(item: WorkCardItem, query: string): boolean {
-  const needle = query.trim().toLowerCase();
-  if (!needle) return true;
-  return `${item.customer} ${item.equipment} ${item.serial} ${item.engineer ?? ""} ${item.summary}`.toLowerCase().includes(needle);
-}
-
-function LeadColumn({
-  datasetId,
-  queue,
-  label,
-  onOpen,
-}: {
-  datasetId: string;
-  queue: string;
-  label: string;
-  onOpen: (rowId: string) => void;
-}) {
-  const cards = useCards(datasetId, queue);
-  return (
-    <section className="flex flex-col gap-3">
-      <h2 className="text-xs font-medium uppercase tracking-wide text-ink-2">{label}</h2>
-      <WorkList
-        datasetId={datasetId}
-        {...cards}
-        onOpen={onOpen}
-        renderActions={(item) => <AmcLeadActions datasetId={datasetId} item={item} queue={queue} />}
-      />
-    </section>
-  );
-}
-
-function AmcLeadActions({ datasetId, item, queue }: { datasetId: string; item: WorkCardItem; queue: string }) {
-  const [note, setNote] = useState("");
-  const [date, setDate] = useState("");
-  if (queue !== "amc_due" && queue !== "amc_proposal") return null;
-  return (
-    <div className="flex w-full flex-col gap-2">
-      <Input aria-label="Note" placeholder="Note" value={note} onChange={(event) => setNote(event.target.value)} />
-      <Input aria-label="Follow-up date" type="date" value={date} onChange={(event) => setDate(event.target.value)} />
-      <div className="flex flex-wrap gap-2">
-        {queue === "amc_due" ? (
-          <Button size="sm" onClick={() => void save(datasetId, item, "proposal_sent", note, date)}>
-            Send proposal
-          </Button>
-        ) : null}
-        {queue === "amc_proposal" ? (
-          <Button size="sm" onClick={() => void save(datasetId, item, "acknowledge", note, date)}>
-            Acknowledge
-          </Button>
-        ) : null}
-        <Button size="sm" variant="secondary" onClick={() => void save(datasetId, item, "decline", note, date)}>
-          Decline
-        </Button>
-      </div>
-    </div>
-  );
-}
-
-function save(datasetId: string, item: WorkCardItem, action: "proposal_sent" | "acknowledge" | "decline", note: string, date: string) {
-  void rowAction(datasetId, item.rowId, "/actions/amc", {
-    action,
-    ...(note.trim() ? { note: note.trim() } : {}),
-    ...(date ? { date } : {}),
-  }).catch((error: unknown) => {
-    if (!isUnauthenticated(error)) toast.error(errorText(error, "Could not update AMC."));
-  });
-}
-
-function LogCallDialog({
-  open,
-  datasetId,
-  options,
-  onClose,
-}: {
-  open: boolean;
-  datasetId: string | null;
-  options: WorkCardItem[];
-  onClose: () => void;
-}) {
-  const [rowId, setRowId] = useState("");
-  const [type, setType] = useState<(typeof CALL_TYPES)[number]>("Complaint");
-  const [description, setDescription] = useState("");
-  return (
-    <Dialog open={open} onOpenChange={(next) => { if (!next) onClose(); }}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Log call</DialogTitle>
-          <DialogDescription>Attach the call to a live contract on the agenda.</DialogDescription>
-        </DialogHeader>
-        <div className="flex flex-col gap-3 px-5 pb-2">
-          <Select value={rowId || "none"} onValueChange={(value) => setRowId(value === "none" ? "" : value)}>
-            <SelectTrigger aria-label="Record">
-              <SelectValue placeholder="Choose a record" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="none">Choose a record</SelectItem>
-              {options.map((item) => (
-                <SelectItem key={item.rowId} value={item.rowId}>
-                  {item.customer}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select value={type} onValueChange={(value) => { if ((CALL_TYPES as readonly string[]).includes(value)) setType(value as (typeof CALL_TYPES)[number]); }}>
-            <SelectTrigger aria-label="Call type">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {CALL_TYPES.map((item) => (
-                <SelectItem key={item} value={item}>
-                  {item}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Textarea aria-label="Description" value={description} onChange={(event) => setDescription(event.target.value)} />
-        </div>
-        <DialogFooter>
-          <Button variant="secondary" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button
-            disabled={!datasetId || !rowId || description.trim().length === 0}
-            onClick={() => {
-              if (!datasetId || !rowId) return;
-              void rowAction(datasetId, rowId, "/calls", { type, description: description.trim() })
-                .then(() => onClose())
-                .catch((error: unknown) => {
-                  if (!isUnauthenticated(error)) toast.error(errorText(error, "Could not log the call."));
-                });
-            }}
-          >
-            Log call
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-type RowOtp =
-  | { otpRequired: false }
-  | { otpRequired: true; challengeId: string; sentTo: string; previewCode?: string };
-
-function OtpFields({
-  meta,
-  value,
-  error,
-  onChange,
-}: {
-  meta: RowOtp | null;
-  value: string;
-  error: string;
-  onChange: (value: string) => void;
-}) {
-  if (error) {
-    return (
-      <p role="alert" className="text-sm text-ruby">
-        {error}
-      </p>
-    );
-  }
-  if (!meta) {
-    return <p className="text-sm text-ink-2">Sending OTP to the customer mail or mobile when those fields are present.</p>;
-  }
-  if (!meta.otpRequired) {
-    return <p className="text-sm text-ink-2">No customer mail or mobile on this row, so OTP is not required.</p>;
-  }
-  return (
-    <div className="flex flex-col gap-2">
-      <p className="text-sm text-ink-2">OTP sent to {meta.sentTo}.</p>
-      {meta.previewCode ? (
-        <p className="text-sm text-ink-2">
-          Delivery API is not configured here. Use code <span className="font-medium tabular-nums text-ink">{meta.previewCode}</span>.
-        </p>
+      {datasetId ? (
+        <>
+          <DelayDialog open={delay != null} datasetId={datasetId} contract={delay?.contract ?? null} pm={delay?.pm ?? null} onClose={() => setDelay(null)} />
+          <CloseDialog open={close != null} datasetId={datasetId} contract={close?.contract ?? null} pm={close?.pm ?? null} onClose={() => setClose(null)} />
+          <AmcDialog open={amc != null} datasetId={datasetId} contract={amc} onClose={() => setAmc(null)} />
+        </>
       ) : null}
-      <Label htmlFor="customer-otp">Customer OTP</Label>
-      <Input
-        id="customer-otp"
-        inputMode="numeric"
-        autoComplete="one-time-code"
-        maxLength={4}
-        value={value}
-        onChange={(event) => onChange(event.target.value.replace(/\D/g, "").slice(0, 4))}
-      />
     </div>
   );
 }

@@ -7,7 +7,7 @@ import { prisma } from "./prisma";
 const OTP_TTL_MS = 10 * 60 * 1000;
 const MAX_ATTEMPTS = 5;
 
-export type OtpPurpose = "login" | "pms_close" | "pms_delay";
+export type OtpPurpose = "login" | "pms_close" | "pms_delay" | "amc_update";
 export type OtpChannel = "email" | "sms";
 
 export type OtpIssue = {

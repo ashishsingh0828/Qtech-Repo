@@ -80,6 +80,7 @@ export function canPerformAction(
 ): boolean {
   if (role === "admin" || role === "manager") return true;
   if (role === "validator" && action === "validate") return canEdit("data_validation");
+  if (role === "validator" && action === "assign") return true;
   if (role !== "service") return false;
   if (action === "amc") return canEdit("amc");
   if (action === "pms") return canEdit("schedule_services");
@@ -121,7 +122,7 @@ export const DEFAULT_ROLE_GROUP_ACCESS: readonly RoleGroupAccessDefault[] = [
   access("service", "instrument_details", true, false),
   access("validator", "data_validation", true, true),
   access("service", "data_validation", false, false),
-  access("validator", "schedule_services", false, false),
+  access("validator", "schedule_services", true, false),
   access("service", "schedule_services", true, true),
   access("validator", "complaint", false, false),
   access("service", "complaint", true, true),

@@ -6,6 +6,7 @@ import { queryClient } from "../../lib/query";
 export async function refreshWorkspace(datasetId: string): Promise<void> {
   await Promise.all([
     queryClient.invalidateQueries({ queryKey: ["workspace", datasetId] }),
+    queryClient.invalidateQueries({ queryKey: ["desk", datasetId] }),
     queryClient.invalidateQueries({ queryKey: ["kpis", datasetId] }),
     queryClient.invalidateQueries({ queryKey: ["health", datasetId] }),
     queryClient.invalidateQueries({ queryKey: ["workload", datasetId] }),

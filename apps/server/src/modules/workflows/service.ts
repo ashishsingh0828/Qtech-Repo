@@ -144,28 +144,58 @@ export async function runAmc(
   actor: PublicUser,
   datasetId: string,
   rowId: string,
-  input: { action: "proposal_sent" | "acknowledge" | "decline" | "reset"; note?: string; date?: string },
+  input: {
+    action: "proposal_sent" | "acknowledge" | "decline" | "reset" | "pending" | "delay";
+    note?: string;
+    reason?: string;
+    date?: string;
+    chequeDate?: string;
+    document?: string;
+    challengeId?: string;
+    code?: string;
+  },
 ): Promise<ActionResult> {
+  const otpReason = /not available|not agreed/i.test(input.reason ?? "");
+  const needsOtp =
+    input.action === "acknowledge" ||
+    ((input.action === "decline" || input.action === "delay") && otpReason);
+  if (needsOtp) {
+    await assertRowOtp(actor, datasetId, rowId, "amc_update", input.challengeId, input.code);
+  }
   return runAction(actor, datasetId, rowId, "amc", (data, schema) => {
     const today = currentDay();
     const end = readText(data, schema, "end_date");
     const status = effectiveAmcStatus(readText(data, schema, "amc_status"), isWarrantyExpired(end, today));
+    const note = [input.reason, input.note].filter((part) => part && part.trim()).join(" · ") || null;
+    if (input.chequeDate) writeSemantic(data, schema, "cheque_date", input.chequeDate);
+    if (input.document) writeSemantic(data, schema, "amc_document", input.document);
     if (input.action === "reset") {
       if (actor.role !== "admin" && actor.role !== "manager") {
         throw new AppError("FORBIDDEN", 403, "Only a manager can reset AMC.");
       }
-      for (const key of ["amc_status", "proposal_sent_at", "ack_response", "ack_note", "ack_at"]) {
+      for (const key of ["amc_status", "proposal_sent_at", "ack_response", "ack_note", "ack_at", "cheque_date", "amc_document"]) {
         writeSemantic(data, schema, key, null);
       }
       return;
     }
-    if (input.action === "proposal_sent") {
-      if (status !== "AMC Due") throw new AppError("CONFLICT", 409, "A proposal can be sent only when AMC is due.");
-      writeSemantic(data, schema, "amc_status", "Proposal Sent");
-      writeSemantic(data, schema, "proposal_sent_at", input.date ?? today);
+    if (input.action === "pending") {
+      writeSemantic(data, schema, "ack_note", note);
       return;
     }
-    if (status !== "Proposal Sent") throw new AppError("CONFLICT", 409, "Acknowledge or decline only a sent proposal.");
+    if (input.action === "proposal_sent") {
+      if (status !== "AMC Due" && status !== "Proposal Sent") {
+        throw new AppError("CONFLICT", 409, "A proposal can be sent only when AMC is due.");
+      }
+      writeSemantic(data, schema, "amc_status", "Proposal Sent");
+      writeSemantic(data, schema, "proposal_sent_at", input.date ?? today);
+      writeSemantic(data, schema, "ack_note", note);
+      return;
+    }
+    if (input.action === "delay") {
+      writeSemantic(data, schema, "amc_status", "Proposal Sent");
+      writeSemantic(data, schema, "ack_note", note);
+      return;
+    }
     const when = input.date ?? today;
     if (input.action === "acknowledge") {
       writeSemantic(data, schema, "amc_status", "Acknowledged");
@@ -175,7 +205,7 @@ export async function runAmc(
       writeSemantic(data, schema, "ack_response", "Declined");
     }
     writeSemantic(data, schema, "ack_at", when);
-    writeSemantic(data, schema, "ack_note", input.note?.trim() || null);
+    writeSemantic(data, schema, "ack_note", note);
   }, {}, undefined, { notice: { amcAction: input.action } });
 }
 
@@ -183,10 +213,10 @@ export async function requestRowOtp(
   actor: PublicUser,
   datasetId: string,
   rowId: string,
-  purpose: "pms_close" | "pms_delay",
+  purpose: "pms_close" | "pms_delay" | "amc_update",
 ): Promise<{ otpRequired: false } | ({ otpRequired: true } & OtpIssue)> {
   const permissions = await permissionsFor(actor.role);
-  assertCapability(actor, permissions, "pms");
+  assertCapability(actor, permissions, purpose === "amc_update" ? "amc" : "pms");
   const contact = await rowContact(datasetId, rowId);
   const issue = await issueOtp({
     purpose,
@@ -204,16 +234,28 @@ export async function runPms(
   actor: PublicUser,
   datasetId: string,
   rowId: string,
-  input: { action: "markDone" | "reschedule"; n: number; date?: string; challengeId?: string; code?: string },
+  input: {
+    action: "markDone" | "reschedule" | "acknowledge";
+    n: number;
+    date?: string;
+    reason?: string;
+    remarks?: string;
+    report?: string;
+    challengeId?: string;
+    code?: string;
+  },
 ): Promise<ActionResult> {
-  await assertRowOtp(
-    actor,
-    datasetId,
-    rowId,
-    input.action === "markDone" ? "pms_close" : "pms_delay",
-    input.challengeId,
-    input.code,
-  );
+  const delayOtp = input.action === "reschedule" && input.reason === "Customer Not Available";
+  if (input.action === "markDone" || delayOtp) {
+    await assertRowOtp(
+      actor,
+      datasetId,
+      rowId,
+      input.action === "markDone" ? "pms_close" : "pms_delay",
+      input.challengeId,
+      input.code,
+    );
+  }
   return runAction(actor, datasetId, rowId, "pms", (data, schema) => {
     const scheduledKey = `pms:${input.n}`;
     const scheduled = readText(data, schema, scheduledKey);
@@ -221,16 +263,27 @@ export async function runPms(
       throw new AppError("CONFLICT", 409, "That PMS date is not scheduled.");
     }
     const today = currentDay();
+    if (input.action === "acknowledge") {
+      writeSemantic(data, schema, `pm_ack:${input.n}`, today);
+      writeSemantic(data, schema, `pm_state:${input.n}`, "Acknowledged");
+      return;
+    }
     if (input.action === "markDone") {
       const done = input.date ?? today;
       if (done > today) throw new AppError("VALIDATION", 400, "A done date cannot be in the future.");
       writeSemantic(data, schema, `pm_date:${input.n}`, done);
+      writeSemantic(data, schema, `pm_state:${input.n}`, "Closed");
+      if (input.report) writeSemantic(data, schema, `pm_report:${input.n}`, input.report);
       return;
     }
     if (!input.date || !/^\d{4}-\d{2}-\d{2}$/.test(input.date)) {
       throw new AppError("VALIDATION", 400, "Choose a reschedule date.");
     }
     writeSemantic(data, schema, scheduledKey, input.date);
+    writeSemantic(data, schema, `pm_state:${input.n}`, "Delayed");
+    writeSemantic(data, schema, `pm_reason:${input.n}`, input.reason ?? null);
+    writeSemantic(data, schema, `pm_remarks:${input.n}`, input.remarks ?? null);
+    writeSemantic(data, schema, `pm_plan:${input.n}`, input.date);
   });
 }
 
@@ -249,15 +302,33 @@ export async function runAssign(
   actor: PublicUser,
   datasetId: string,
   rowId: string,
-  input: { validatorId?: string | null; serviceId?: string | null },
+  input: { validatorId?: string | null; serviceId?: string | null; engineer?: string },
   quiet = false,
 ): Promise<ActionResult> {
-  if (actor.role !== "admin" && actor.role !== "manager") {
-    throw new AppError("FORBIDDEN", 403, "Only a manager can assign rows.");
+  if (actor.role !== "admin" && actor.role !== "manager" && actor.role !== "validator") {
+    throw new AppError("FORBIDDEN", 403, "Only a coordinator or manager can assign rows.");
   }
   const validatorId = await activeRoleUser(input.validatorId, "validator");
-  const serviceId = await activeRoleUser(input.serviceId, "service");
-  return runAction(actor, datasetId, rowId, "assign", () => undefined, {}, { validatorId, serviceId }, { quiet });
+  let serviceId = await activeRoleUser(input.serviceId, "service");
+  if (input.engineer && serviceId === undefined) {
+    const match = await prisma.user.findFirst({
+      where: { active: true, role: "service", name: input.engineer },
+      select: { id: true },
+    });
+    if (match) serviceId = match.id;
+  }
+  return runAction(
+    actor,
+    datasetId,
+    rowId,
+    "assign",
+    (data, schema) => {
+      if (input.engineer) writeSemantic(data, schema, "engineer", input.engineer);
+    },
+    {},
+    { validatorId, serviceId },
+    { quiet },
+  );
 }
 
 export async function logCall(
@@ -743,7 +814,7 @@ async function assertRowOtp(
   actor: PublicUser,
   datasetId: string,
   rowId: string,
-  purpose: "pms_close" | "pms_delay",
+  purpose: "pms_close" | "pms_delay" | "amc_update",
   challengeId: string | undefined,
   code: string | undefined,
 ): Promise<void> {

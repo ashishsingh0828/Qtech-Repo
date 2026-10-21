@@ -5,7 +5,7 @@ import { permissionsFor, toPublicUser, toSharedRole } from "../../lib/account";
 import { AppError } from "../../lib/errors";
 import { assertLoginAllowed, clearLoginFailures, recordLoginFailure } from "../../lib/login-rate-limit";
 import { logger } from "../../lib/logger";
-import { consumeOtp, issueOtp, type OtpIssue } from "../../lib/otp";
+import { consumeOtp, type OtpIssue } from "../../lib/otp";
 import { hashPassword, verifyPassword } from "../../lib/password";
 import { prisma } from "../../lib/prisma";
 import { hashToken, newSessionToken, SESSION_TTL_MS } from "../../lib/session";
@@ -27,6 +27,13 @@ const DESK_USERS: Array<{
     phone: "9800000002",
   },
   {
+    role: "manager",
+    name: "Accounts",
+    email: "accounts@example.com",
+    password: "change-me",
+    phone: null,
+  },
+  {
     role: "validator",
     name: "Service Coordinator",
     email: "validator@example.com",
@@ -35,10 +42,24 @@ const DESK_USERS: Array<{
   },
   {
     role: "service",
-    name: "Service Engineer",
+    name: "Ravi Kumar",
     email: "service@example.com",
     password: "change-me",
     phone: "9800000001",
+  },
+  {
+    role: "service",
+    name: "Anil Sharma",
+    email: "anil@example.com",
+    password: "change-me",
+    phone: "9800000003",
+  },
+  {
+    role: "service",
+    name: "Meena Iyer",
+    email: "meena@example.com",
+    password: "change-me",
+    phone: "9800000004",
   },
 ];
 
@@ -65,7 +86,13 @@ export async function ensureBootstrapAdmin(): Promise<void> {
 
   for (const desk of DESK_USERS) {
     const found = await prisma.user.findUnique({ where: { email: desk.email } });
-    if (found) continue;
+    if (found) {
+      await prisma.user.update({
+        where: { id: found.id },
+        data: { name: desk.name, phone: desk.phone, role: desk.role, active: true },
+      });
+      continue;
+    }
     await prisma.user.create({
       data: {
         name: desk.name,
@@ -83,7 +110,7 @@ export async function ensureBootstrapAdmin(): Promise<void> {
 export async function login(input: {
   email: string;
   password: string;
-  role: Role;
+  role?: Role;
   ip: string;
 }): Promise<LoginResult> {
   assertLoginAllowed(input.ip, input.email);
@@ -93,21 +120,12 @@ export async function login(input: {
     recordLoginFailure(input.ip, input.email);
     throw new AppError("UNAUTHENTICATED", 401, INVALID_LOGIN);
   }
-  if (toSharedRole(user.role) !== input.role) {
+  if (input.role && toSharedRole(user.role) !== input.role) {
     recordLoginFailure(input.ip, input.email);
     throw new AppError("UNAUTHENTICATED", 401, `Use the ${deskLabel(toSharedRole(user.role))} desk for this login.`);
   }
 
   clearLoginFailures(input.ip, input.email);
-  const issue = await issueOtp({
-    purpose: "login",
-    email: user.email,
-    phone: user.phone,
-    userId: user.id,
-  });
-  if (issue) {
-    return { otpRequired: true, issue };
-  }
   const session = await createSession(user.id);
   return { otpRequired: false, ...session };
 }
