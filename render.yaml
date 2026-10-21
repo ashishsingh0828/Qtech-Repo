@@ -3,7 +3,8 @@ services:
     name: qtech-service-hub
     runtime: node
     plan: free
-    branch: cursor/foundation-scaffold-1491
+    branch: main
+    autoDeployTrigger: commit
     buildCommand: npm install --include=dev && npm run build
     startCommand: npm run start:prod
     healthCheckPath: /api/health
