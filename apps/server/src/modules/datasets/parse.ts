@@ -40,15 +40,23 @@ export type ParsedWorkbook = {
 };
 
 const LABEL_RULES: Array<{ pattern: RegExp; key: string; type: ColumnType }> = [
+  { pattern: /^(customer name|customer)$/i, key: "customer_name", type: "text" },
+  { pattern: /^city$/i, key: "city", type: "text" },
+  { pattern: /^(name|contact person|contact name)$/i, key: "contact_name", type: "text" },
   { pattern: /^(mobile|mobile no\.?|phone|phone no\.?|contact no\.?|contact number)$/i, key: "mobile", type: "phone" },
-  { pattern: /^(serial no\.?|serial number)$/i, key: "serial", type: "text" },
-  { pattern: /^(e-?mail|email id)$/i, key: "email", type: "email" },
+  { pattern: /^(e-?mail|email id|mail)$/i, key: "email", type: "email" },
+  { pattern: /^(location|address)$/i, key: "location", type: "text" },
+  { pattern: /^contract type$/i, key: "contract_type", type: "category" },
+  { pattern: /^(euipment|equipment)(?:\s*name)?$/i, key: "equipment", type: "text" },
+  { pattern: /^(serial no\.?|serial number|serial)$/i, key: "serial", type: "text" },
   { pattern: /^month$/i, key: "month", type: "integer" },
   { pattern: /^year$/i, key: "year", type: "integer" },
   { pattern: /^sr\.?\s*no\.?$/i, key: "sr_no", type: "integer" },
   { pattern: /^days$/i, key: "days", type: "integer" },
   { pattern: /^total pms$/i, key: "total_pms", type: "decimal" },
-  { pattern: /^validated$/i, key: "validated", type: "yesno" },
+  { pattern: /^status$/i, key: "status", type: "status" },
+  { pattern: /^final status$/i, key: "final_status", type: "status" },
+  { pattern: /^validated(?:\s*\(.*\))?$/i, key: "validated", type: "yesno" },
   { pattern: /^validated by$/i, key: "validated_by", type: "text" },
   { pattern: /^validated at$/i, key: "validated_at", type: "date" },
   { pattern: /^(validation due|by when data will be validated)$/i, key: "validation_due", type: "date" },
@@ -68,6 +76,7 @@ const LABEL_RULES: Array<{ pattern: RegExp; key: string; type: ColumnType }> = [
   { pattern: /^(follow up|follow-up|next follow up|next follow-up)$/i, key: "next_follow_up", type: "date" },
   { pattern: /^open calls$/i, key: "open_calls", type: "integer" },
   { pattern: /^last call date$/i, key: "last_call_date", type: "date" },
+  { pattern: /^engineer$/i, key: "engineer", type: "text" },
 ];
 
 export async function parseWorkbook(buffer: Buffer): Promise<ParsedWorkbook> {
@@ -300,8 +309,8 @@ function applyAutoNames(drafts: ColumnDraft[], groups: DatasetGroup[]): void {
 function matchLabel(label: string): { key: string; type: ColumnType } | null {
   const pms = /^pms\s*[-:]?\s*(\d+)$/i.exec(label);
   if (pms?.[1]) return { key: `pms:${pms[1]}`, type: "date" };
-  const done = /^pm\s*date\s*[-:]?\s*(\d+)$/i.exec(label);
-  if (done?.[1]) return { key: `pm_date:${done[1]}`, type: "date" };
+  const done = /^pm\s*date(?:\s*[-:]?\s*(\d+))?$/i.exec(label);
+  if (done) return { key: `pm_date:${done[1] ?? "1"}`, type: "date" };
   for (const rule of LABEL_RULES) {
     if (rule.pattern.test(label)) return { key: rule.key, type: rule.type };
   }

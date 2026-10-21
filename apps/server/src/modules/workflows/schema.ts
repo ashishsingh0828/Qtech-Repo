@@ -53,8 +53,16 @@ export const pmsActionSchema = z.object({
       action: z.enum(["markDone", "reschedule"]),
       n: z.number().int().min(1).max(100),
       date: dateOnlySchema.optional(),
+      challengeId: z.uuid().optional(),
+      code: z.string().regex(/^\d{4}$/).optional(),
     })
     .strict(),
+  query: z.unknown(),
+  params: datasetRow,
+});
+
+export const rowOtpSchema = z.object({
+  body: z.object({ purpose: z.enum(["pms_close", "pms_delay"]) }).strict(),
   query: z.unknown(),
   params: datasetRow,
 });

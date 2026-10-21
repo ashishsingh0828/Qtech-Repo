@@ -460,13 +460,13 @@ export function RecordsPage() {
               </PopoverTrigger>
               <PopoverContent className="w-64">
                 <div className="flex flex-col">
-                  <button type="button" className="min-h-11 rounded-control px-2 text-left text-sm hover:bg-surface-2" onClick={() => void exportRows(detail.name)}>
+                  <button type="button" className="min-h-11 rounded-control px-2 text-left text-sm hover:bg-surface-2" onClick={() => void exportRows()}>
                     All rows
                   </button>
                   <button
                     type="button"
                     className="min-h-11 rounded-control px-2 text-left text-sm hover:bg-surface-2"
-                    onClick={() => void exportRows(detail.name, filtered.map((row) => row.id))}
+                    onClick={() => void exportRows(filtered.map((row) => row.id))}
                   >
                     Current view ({filtered.length} rows)
                   </button>
@@ -474,7 +474,7 @@ export function RecordsPage() {
                     type="button"
                     className="min-h-11 rounded-control px-2 text-left text-sm hover:bg-surface-2 disabled:opacity-50"
                     disabled={selected.size === 0}
-                    onClick={() => void exportRows(detail.name, [...selected])}
+                    onClick={() => void exportRows([...selected])}
                   >
                     Selected ({selected.size} rows)
                   </button>
@@ -878,7 +878,7 @@ export function RecordsPage() {
                 Close historical PMS
               </Button>
             ) : null}
-            <Button onClick={() => void exportRows(detail.name, [...selected])}>Export selected</Button>
+            <Button onClick={() => void exportRows([...selected])}>Export selected</Button>
             <Button variant="secondary" onClick={() => setSelected(new Set())}>
               Deselect all
             </Button>
@@ -1127,9 +1127,9 @@ export function RecordsPage() {
     writeDensity(user.id, next);
   }
 
-  async function exportRows(name: string, rowIds?: string[]) {
+  async function exportRows(rowIds?: string[]) {
     try {
-      await downloadWorkbook(datasetId, name, rowIds);
+      await downloadWorkbook(datasetId, "Engineer_Service_Data", rowIds);
       toast.success("Workbook exported.");
     } catch (error) {
       if (!isUnauthenticated(error)) toast.error(errorText(error, "Could not export the workbook."));

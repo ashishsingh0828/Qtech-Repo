@@ -55,7 +55,7 @@ export function SelectItem({ className, children, ...props }: ComponentProps<typ
       )}
       {...props}
     >
-      <span className="absolute left-2 inline-flex size-4 items-center justify-center text-navy">
+      <span className="absolute left-2 inline-flex size-4 items-center justify-center text-pri">
         <SelectPrimitive.ItemIndicator>
           <Check className="size-4" strokeWidth={1.5} />
         </SelectPrimitive.ItemIndicator>

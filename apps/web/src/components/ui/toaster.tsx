@@ -20,7 +20,7 @@ export function Toaster() {
           background: "var(--navy)",
           color: "var(--canvas)",
           border: "1px solid var(--navy-2)",
-          borderRadius: "8px",
+          borderRadius: "6px",
         },
       }}
     />

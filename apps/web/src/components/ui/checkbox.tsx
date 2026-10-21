@@ -12,7 +12,7 @@ export function Checkbox({ className, ...props }: ComponentProps<typeof Checkbox
       )}
       {...props}
     >
-      <span className="flex size-4 items-center justify-center rounded-[4px] border border-hairline bg-surface group-data-[state=checked]:border-navy group-data-[state=checked]:bg-navy">
+      <span className="flex size-4 items-center justify-center rounded-[4px] border border-hairline bg-surface group-data-[state=checked]:border-pri group-data-[state=checked]:bg-pri">
         <CheckboxPrimitive.Indicator>
           <Check className="size-3" strokeWidth={1.5} />
         </CheckboxPrimitive.Indicator>

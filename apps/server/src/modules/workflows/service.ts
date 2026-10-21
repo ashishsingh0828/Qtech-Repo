@@ -19,6 +19,7 @@ import { AppError } from "../../lib/errors";
 import { publishEvent } from "../../lib/events";
 import { logger } from "../../lib/logger";
 import { prisma } from "../../lib/prisma";
+import { consumeOtp, issueOtp, type OtpIssue } from "../../lib/otp";
 import { cancelOutbox, enqueueOutbox, enqueueOutboxNow } from "../notifications/outbox";
 import { syncMirrorFields, type MirrorExtras } from "../datasets/mirrors";
 
@@ -178,12 +179,41 @@ export async function runAmc(
   }, {}, undefined, { notice: { amcAction: input.action } });
 }
 
+export async function requestRowOtp(
+  actor: PublicUser,
+  datasetId: string,
+  rowId: string,
+  purpose: "pms_close" | "pms_delay",
+): Promise<{ otpRequired: false } | ({ otpRequired: true } & OtpIssue)> {
+  const permissions = await permissionsFor(actor.role);
+  assertCapability(actor, permissions, "pms");
+  const contact = await rowContact(datasetId, rowId);
+  const issue = await issueOtp({
+    purpose,
+    email: contact.email,
+    phone: contact.phone,
+    userId: actor.id,
+    datasetId,
+    rowId,
+  });
+  if (!issue) return { otpRequired: false };
+  return { otpRequired: true, ...issue };
+}
+
 export async function runPms(
   actor: PublicUser,
   datasetId: string,
   rowId: string,
-  input: { action: "markDone" | "reschedule"; n: number; date?: string },
+  input: { action: "markDone" | "reschedule"; n: number; date?: string; challengeId?: string; code?: string },
 ): Promise<ActionResult> {
+  await assertRowOtp(
+    actor,
+    datasetId,
+    rowId,
+    input.action === "markDone" ? "pms_close" : "pms_delay",
+    input.challengeId,
+    input.code,
+  );
   return runAction(actor, datasetId, rowId, "pms", (data, schema) => {
     const scheduledKey = `pms:${input.n}`;
     const scheduled = readText(data, schema, scheduledKey);
@@ -707,6 +737,61 @@ async function loadDataset(actor: PublicUser, datasetId: string): Promise<{ sche
   const schema = parseDatasetSchema(dataset.schema);
   if (!schema) throw new AppError("INTERNAL", 500, "Dataset schema is invalid.");
   return { schema, permissions: await permissionsFor(actor.role) };
+}
+
+async function assertRowOtp(
+  actor: PublicUser,
+  datasetId: string,
+  rowId: string,
+  purpose: "pms_close" | "pms_delay",
+  challengeId: string | undefined,
+  code: string | undefined,
+): Promise<void> {
+  const contact = await rowContact(datasetId, rowId);
+  if (!contact.email && !contact.phone) return;
+  if (!challengeId || !code) {
+    throw new AppError("VALIDATION", 400, "Enter the customer OTP sent to their mail or mobile.");
+  }
+  await consumeOtp({
+    challengeId,
+    code,
+    purpose,
+    userId: actor.id,
+    datasetId,
+    rowId,
+  });
+}
+
+async function rowContact(
+  datasetId: string,
+  rowId: string,
+): Promise<{ email: string | null; phone: string | null }> {
+  const row = await prisma.row.findFirst({
+    where: { id: rowId, datasetId, deletedAt: null },
+    select: { data: true, dataset: { select: { schema: true } } },
+  });
+  if (!row) throw new AppError("NOT_FOUND", 404, "Row not found.");
+  const schema = parseDatasetSchema(row.dataset.schema);
+  if (!schema) throw new AppError("INTERNAL", 500, "Dataset schema is invalid.");
+  const data = jsonRecord(row.data);
+  const email =
+    readText(data, schema, "email") ??
+    columnText(data, schema, (column) => column.type === "email" || /mail/i.test(column.label));
+  const phone =
+    readText(data, schema, "mobile") ??
+    columnText(data, schema, (column) => column.type === "phone" || /mobile|phone/i.test(column.label));
+  return { email, phone };
+}
+
+function columnText(
+  data: Record<string, unknown>,
+  schema: DatasetSchema,
+  match: (column: DatasetColumn) => boolean,
+): string | null {
+  const column = schema.columns.find((item) => item.deletedAt == null && match(item));
+  if (!column) return null;
+  const value = data[column.key];
+  return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
 async function assertLiveRow(datasetId: string, rowId: string): Promise<void> {

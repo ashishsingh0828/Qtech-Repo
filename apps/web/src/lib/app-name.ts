@@ -8,5 +8,5 @@ export function useAppName(): string {
     queryFn: () => api<HealthResponse>("/api/health", { tolerate: [503] }),
     staleTime: 60_000,
   });
-  return query.data?.appName || "Qtech Service Hub";
+  return query.data?.appName || "ServiceDesk";
 }

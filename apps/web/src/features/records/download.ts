@@ -25,9 +25,24 @@ export async function downloadWorkbook(datasetId: string, filename: string, rowI
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = filename.toLowerCase().endsWith(".xlsx") ? filename : `${filename}.xlsx`;
+  link.download = filenameFromDisposition(response.headers.get("Content-Disposition"), filename);
   link.click();
   URL.revokeObjectURL(url);
+}
+
+function filenameFromDisposition(header: string | null, fallback: string): string {
+  const named = fallback.toLowerCase().endsWith(".xlsx") ? fallback : `${fallback}.xlsx`;
+  if (!header) return named;
+  const encoded = /filename\*=UTF-8''([^;]+)/i.exec(header);
+  if (encoded?.[1]) {
+    try {
+      return decodeURIComponent(encoded[1]);
+    } catch {
+      return encoded[1];
+    }
+  }
+  const basic = /filename="([^"]+)"/i.exec(header);
+  return basic?.[1] || named;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

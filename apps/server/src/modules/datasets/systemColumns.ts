@@ -18,7 +18,7 @@ type ColumnSpec = {
 };
 
 const SPECS: ColumnSpec[] = [
-  spec("data_validation", "validated", "Validated", "yesno", ["Yes", "No"], [/^validated$/i]),
+  spec("data_validation", "validated", "Validated", "yesno", ["Yes", "No"], [/^validated(?:\s*\(.*\))?$/i]),
   spec("data_validation", "validated_by", "Validated by", "text", [], [/^validated by$/i]),
   spec("data_validation", "validated_at", "Validated at", "date", [], [/^validated at$/i]),
   spec("data_validation", "validation_due", "By when Data will be validated", "date", [], [
@@ -55,6 +55,7 @@ export function applySystemColumns(schema: DatasetSchema): DatasetSchema {
     groups: schema.groups.map((group) => ({ ...group })),
     columns: schema.columns.map((column) => ({ ...column, options: [...column.options] })),
   };
+  bindImportedLabels(next);
   for (const item of SPECS) bindSpec(next, item, item.groupKey);
   const callGroup = callGroupKey(next);
   for (const item of CALL_SPECS) bindSpec(next, { ...item, groupKey: callGroup }, callGroup);
@@ -132,6 +133,47 @@ function callGroupKey(schema: DatasetSchema): string {
   return "complaint";
 }
 
+function bindImportedLabels(schema: DatasetSchema): void {
+  for (const column of schema.columns) {
+    if (column.deletedAt) continue;
+    const label = cleanLabel(column.label);
+    const pms = /^pms\s*[-:]?\s*(\d+)$/i.exec(label);
+    if (pms?.[1]) {
+      column.semantic = `pms:${pms[1]}`;
+      column.type = "date";
+      continue;
+    }
+    const done = /^pm\s*date(?:\s*[-:]?\s*(\d+))?$/i.exec(label);
+    if (done) {
+      column.semantic = `pm_date:${done[1] ?? "1"}`;
+      column.type = "date";
+      continue;
+    }
+    if (column.semantic) continue;
+    for (const hint of IMPORTED_FIELDS) {
+      if (!hint.pattern.test(label)) continue;
+      column.semantic = hint.key;
+      column.type = hint.type;
+      break;
+    }
+  }
+}
+
+const IMPORTED_FIELDS: Array<{ pattern: RegExp; key: string; type: ColumnType }> = [
+  { pattern: /^(customer name|customer)$/i, key: "customer_name", type: "text" },
+  { pattern: /^city$/i, key: "city", type: "text" },
+  { pattern: /^(name|contact person|contact name)$/i, key: "contact_name", type: "text" },
+  { pattern: /^(mobile|mobile no\.?|phone|phone no\.?|contact no\.?|contact number)$/i, key: "mobile", type: "phone" },
+  { pattern: /^(e-?mail|email id|mail)$/i, key: "email", type: "email" },
+  { pattern: /^(location|address)$/i, key: "location", type: "text" },
+  { pattern: /^contract type$/i, key: "contract_type", type: "category" },
+  { pattern: /^(euipment|equipment)(?:\s*name)?$/i, key: "equipment", type: "text" },
+  { pattern: /^(serial no\.?|serial number|serial)$/i, key: "serial", type: "text" },
+  { pattern: /^status$/i, key: "status", type: "status" },
+  { pattern: /^final status$/i, key: "final_status", type: "status" },
+  { pattern: /^engineer$/i, key: "engineer", type: "text" },
+];
+
 function pairPmDates(schema: DatasetSchema): void {
   const ordered = [...schema.columns].sort((left, right) => left.order - right.order || left.key.localeCompare(right.key));
   const additions: Array<{ afterKey: string; column: DatasetColumn }> = [];
@@ -141,7 +183,12 @@ function pairPmDates(schema: DatasetSchema): void {
     const number = match?.[1];
     if (!number) continue;
     const semantic = `pm_date:${number}`;
-    const existing = schema.columns.find((item) => item.key === semantic || item.semantic === semantic);
+    const existing = schema.columns.find((item) => {
+      if (item.key === semantic || item.semantic === semantic) return true;
+      const label = cleanLabel(item.label);
+      if (number === "1" && /^pm\s*date$/i.test(label)) return true;
+      return new RegExp(`^pm\\s*date\\s*[-:]?\\s*${number}$`, "i").test(label) || new RegExp(`^pm\\s*date${number}$`, "i").test(label);
+    });
     if (existing) {
       existing.semantic = semantic;
       existing.system = true;
@@ -157,7 +204,7 @@ function pairPmDates(schema: DatasetSchema): void {
         {
           groupKey: "schedule_services",
           key: semantic,
-          label: `PM Date ${number}`,
+          label: number === "1" ? "PM Date" : `PM Date${number}`,
           type: "date",
           semantic,
           options: [],

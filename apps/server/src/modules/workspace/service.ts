@@ -42,6 +42,7 @@ export type WorkCardItem = {
   customer: string;
   equipment: string;
   serial: string;
+  engineer: string;
   summary: string;
   phone: string | null;
   email: string | null;
@@ -550,7 +551,7 @@ function toCard(
   const warranty = warrantyLiveStatus(end, day);
   const amc = effectiveAmcStatus(row.amcStatus, isWarrantyExpired(end, day));
   const customer = textField(data, columns, "customer_name") || "Record";
-  const equipment = textField(data, columns, "equipment") || labeled(data, columns, /equipment|instrument|model/i);
+  const equipment = textField(data, columns, "equipment") || labeled(data, columns, /euipment|equipment|instrument|model/i);
   const serial = textField(data, columns, "serial");
   const city = textField(data, columns, "city");
   const facts = [city, textField(data, columns, "contract_type"), end ? `Ends ${end}` : ""].filter(Boolean);
@@ -560,10 +561,11 @@ function toCard(
     customer,
     equipment,
     serial,
+    engineer: textField(data, columns, "engineer"),
     summary: facts.slice(0, 3).join(" · "),
     phone: phoneOf(data, columns),
     email: emailOf(data, columns),
-    address: textField(data, columns, "address") || labeled(data, columns, /address/i),
+    address: textField(data, columns, "location") || textField(data, columns, "address") || labeled(data, columns, /location|address/i),
     city,
     contractType: textField(data, columns, "contract_type"),
     pills: [

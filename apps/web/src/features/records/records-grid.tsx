@@ -148,7 +148,7 @@ export function RecordsGrid(props: GridProps) {
       ref={scrollRef}
       data-records-grid
       tabIndex={0}
-      className="h-full min-h-0 min-w-0 flex-1 overflow-auto rounded-card border border-hairline bg-surface outline-none shadow-sm"
+      className="h-full min-h-0 min-w-0 flex-1 overflow-auto rounded-card border border-hairline bg-surface outline-none"
       onKeyDown={(event) => {
         if (props.editor) return;
         if (!props.activeCell) return;
@@ -272,7 +272,7 @@ export function RecordsGrid(props: GridProps) {
                 key={row.id}
                 className={cn(
                   "absolute left-0 top-0 flex border-b border-hairline transition-colors hover:bg-surface-2/60",
-                  virtualRow.index % 2 === 1 ? "bg-[#FAF9F7]/70" : "bg-surface",
+                  virtualRow.index % 2 === 1 ? "bg-canvas" : "bg-surface",
                   isSelected && "bg-gold-soft/60 hover:bg-gold-soft/80",
                 )}
                 style={{
@@ -283,7 +283,11 @@ export function RecordsGrid(props: GridProps) {
                 }}
               >
                 <div
-                  className="sticky left-0 z-10 flex shrink-0 border-r border-hairline bg-surface shadow-[2px_0_4px_rgba(20,23,31,0.04)]"
+                  className={cn(
+                    "sticky left-0 z-10 flex shrink-0 border-r border-hairline",
+                    virtualRow.index % 2 === 1 ? "bg-canvas" : "bg-surface",
+                    isSelected && "bg-gold-soft/60",
+                  )}
                   style={{ width: CHECK_W + INDEX_W, height: virtualRow.size }}
                 >
                   <div className="flex items-center justify-center" style={{ width: CHECK_W }}>

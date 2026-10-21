@@ -19,6 +19,10 @@ const envSchema = z.object({
   ADMIN_NAME: z.string().min(1),
   ADMIN_EMAIL: z.string().email(),
   ADMIN_PASSWORD: z.string().min(1),
+  OTP_EMAIL_API_URL: z.string().optional(),
+  OTP_EMAIL_API_KEY: z.string().optional(),
+  OTP_SMS_API_URL: z.string().optional(),
+  OTP_SMS_API_KEY: z.string().optional(),
 });
 
 const parsed = envSchema.safeParse(process.env);

@@ -240,7 +240,7 @@ function Sidebar({
           </IconButton>
         </div>
       ) : null}
-      <nav className="flex min-h-0 flex-1 flex-col gap-0.5" aria-label="Sign in as">
+      <nav className="flex min-h-0 flex-1 flex-col gap-0.5" aria-label="Main">
         {items.map((item) => (
           <NavItemLink key={item.id} item={item} collapsed={collapsed} />
         ))}
@@ -257,14 +257,17 @@ function NavItemLink({ item, collapsed }: { item: NavItem; collapsed: boolean })
       end={item.path === "/"}
       className={({ isActive }) =>
         cn(
-          "relative flex min-h-11 min-w-0 items-center gap-3 rounded-[6px] border-l-[3px] border-transparent px-3 text-[15px] text-[#c9dcdc] hover:bg-white/5",
+          "relative flex min-h-11 min-w-0 items-center gap-3 rounded-[6px] border-l-[3px] border-transparent px-3 py-2 text-[15px] text-[#c9dcdc] hover:bg-white/5 focus-visible:outline-gold",
           collapsed && "justify-center px-0 xl:justify-start xl:px-3",
           isActive && "border-l-gold bg-white/10 text-white",
         )
       }
     >
       <Icon className="size-4 shrink-0" strokeWidth={1.5} />
-      <span className={cn("truncate", collapsed && "hidden xl:inline")}>{item.label}</span>
+      <span className={cn("min-w-0", collapsed && "hidden xl:block")}>
+        <span className="block truncate font-medium">{item.label}</span>
+        {item.hint ? <small className="block truncate text-[12px] text-[#85a2a4]">{item.hint}</small> : null}
+      </span>
     </NavLink>
   );
 }

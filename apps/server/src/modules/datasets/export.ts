@@ -92,7 +92,17 @@ export async function buildExportWorkbook(
 }
 
 function writeCell(cell: Cell, column: DatasetColumn, value: unknown): void {
+  if (isScheduleDate(column) && (value == null || value === "")) {
+    cell.value = "NA";
+    cell.numFmt = "@";
+    return;
+  }
   if (value == null || value === "") return;
+  if (typeof value === "string" && /^na$/i.test(value) && isScheduleDate(column)) {
+    cell.value = "NA";
+    cell.numFmt = "@";
+    return;
+  }
   if (column.type === "date" && typeof value === "string" && ISO_DATE.test(value)) {
     cell.value = new Date(`${value}T00:00:00.000Z`);
     cell.numFmt = "yyyy-mm-dd";
@@ -117,6 +127,11 @@ function writeCell(cell: Cell, column: DatasetColumn, value: unknown): void {
     return;
   }
   cell.value = typeof value === "string" ? value : String(value);
+}
+
+function isScheduleDate(column: DatasetColumn): boolean {
+  const key = column.semantic ?? column.key;
+  return /^pms:\d+$/.test(key) || /^pm_date:\d+$/.test(key);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

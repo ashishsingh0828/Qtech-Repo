@@ -32,6 +32,13 @@ export function syncMirrorFields(
   const days = contractDays(isoField(next, schema.columns, "start_date"), isoField(next, schema.columns, "end_date"));
   writeDerived(next, schema.columns, "days", days);
   const dueSource: Record<string, unknown> = { ...next };
+  for (const column of schema.columns) {
+    if (column.deletedAt) continue;
+    const scheduled = /^pms:(\d+)$/.exec(column.semantic ?? "") ?? /^pms:(\d+)$/.exec(column.key);
+    if (scheduled?.[1] && next[column.key] != null) dueSource[`pms:${scheduled[1]}`] = next[column.key];
+    const done = /^pm_date:(\d+)$/.exec(column.semantic ?? "") ?? /^pm_date:(\d+)$/.exec(column.key);
+    if (done?.[1] && next[column.key] != null) dueSource[`pm_date:${done[1]}`] = next[column.key];
+  }
   for (const [key, value] of Object.entries(dueSource)) {
     if (key.startsWith("pm_date:") && value === "NA") delete dueSource[key];
   }

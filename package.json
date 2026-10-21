@@ -26,5 +26,10 @@
     "globals": "^16.4.0",
     "typescript": "5.9.3",
     "typescript-eslint": "^8.46.2"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.19.3",
+    "@rolldown/binding-win32-x64-msvc": "^1.2.11",
+    "prisma": "^6.19.3"
   }
 }

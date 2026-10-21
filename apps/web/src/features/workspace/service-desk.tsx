@@ -22,6 +22,7 @@ import {
   TabsTrigger,
   Textarea,
 } from "../../components/ui";
+import { api } from "../../lib/api";
 import { errorText, isUnauthenticated } from "../../lib/errors";
 import { useAuth } from "../auth/auth-gate";
 import { readWorkspace, writeWorkspace } from "../records/storage";
@@ -47,7 +48,11 @@ export function ServiceDesk() {
   const initial = (TABS as readonly string[]).includes(saved.tab) ? (saved.tab as (typeof TABS)[number]) : "agenda";
   const [tab, setTab] = useState<(typeof TABS)[number]>(initial);
   const [reschedule, setReschedule] = useState<WorkCardItem | null>(null);
+  const [closeItem, setCloseItem] = useState<WorkCardItem | null>(null);
   const [date, setDate] = useState("");
+  const [otp, setOtp] = useState("");
+  const [otpMeta, setOtpMeta] = useState<RowOtp | null>(null);
+  const [otpError, setOtpError] = useState("");
   const [logOpen, setLogOpen] = useState(false);
   const [resolveItem, setResolveItem] = useState<WorkCardItem | null>(null);
   const [note, setNote] = useState("");
@@ -72,6 +77,35 @@ export function ServiceDesk() {
     } catch (error) {
       if (!isUnauthenticated(error)) toast.error(errorText(error, "Could not save."));
     }
+  }
+
+  async function openPms(item: WorkCardItem, kind: "close" | "delay") {
+    setOtp("");
+    setOtpError("");
+    setOtpMeta(null);
+    setDate(item.scheduled ?? "");
+    if (kind === "close") setCloseItem(item);
+    else setReschedule(item);
+    if (!datasetId) return;
+    try {
+      const result = await api<RowOtp>(`/api/datasets/${datasetId}/rows/${item.rowId}/otp`, {
+        method: "POST",
+        body: { purpose: kind === "close" ? "pms_close" : "pms_delay" },
+      });
+      setOtpMeta(result);
+    } catch (error) {
+      if (!isUnauthenticated(error)) setOtpError(errorText(error, "Could not send the customer OTP."));
+    }
+  }
+
+  function otpFields() {
+    return otpMeta?.otpRequired ? { challengeId: otpMeta.challengeId, code: otp.trim() } : {};
+  }
+
+  function otpReady() {
+    if (!otpMeta) return false;
+    if (!otpMeta.otpRequired) return true;
+    return otp.trim().length === 4;
   }
 
   return (
@@ -104,11 +138,11 @@ export function ServiceDesk() {
                     empty="None here."
                     renderActions={(item) => (
                       <>
-                        <Button size="sm" disabled={item.pmsN == null} onClick={() => void act(item, "/actions/pms", { action: "markDone", n: item.pmsN })}>
-                          Mark done
+                        <Button size="sm" disabled={item.pmsN == null} onClick={() => void openPms(item, "close")}>
+                          Close
                         </Button>
-                        <Button size="sm" variant="secondary" disabled={item.pmsN == null} onClick={() => { setReschedule(item); setDate(item.scheduled ?? ""); }}>
-                          Reschedule
+                        <Button size="sm" variant="secondary" disabled={item.pmsN == null} onClick={() => void openPms(item, "delay")}>
+                          Delay
                         </Button>
                       </>
                     )}
@@ -165,25 +199,53 @@ export function ServiceDesk() {
           </TabsContent>
         </Tabs>
       ) : null}
+      <Dialog open={closeItem != null} onOpenChange={(openDialog) => { if (!openDialog) setCloseItem(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Close this PM</DialogTitle>
+            <DialogDescription>{closeItem?.customer}</DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-3 px-5 pb-2">
+            <OtpFields meta={otpMeta} value={otp} error={otpError} onChange={setOtp} />
+          </div>
+          <DialogFooter>
+            <Button variant="secondary" onClick={() => setCloseItem(null)}>
+              Cancel
+            </Button>
+            <Button
+              disabled={!otpReady() || closeItem?.pmsN == null}
+              onClick={() => {
+                if (!closeItem || closeItem.pmsN == null) return;
+                void act(closeItem, "/actions/pms", { action: "markDone", n: closeItem.pmsN, ...otpFields() }).then(() => setCloseItem(null));
+              }}
+            >
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <Dialog open={reschedule != null} onOpenChange={(openDialog) => { if (!openDialog) setReschedule(null); }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Reschedule PMS</DialogTitle>
+            <DialogTitle>Delay this PM</DialogTitle>
             <DialogDescription>{reschedule?.customer}</DialogDescription>
           </DialogHeader>
-          <div className="px-5 pb-2">
-            <Label htmlFor="pms-date">Date</Label>
-            <Input id="pms-date" type="date" value={date} onChange={(event) => setDate(event.target.value)} />
+          <div className="flex flex-col gap-3 px-5 pb-2">
+            <div>
+              <Label htmlFor="pms-date">Date</Label>
+              <Input id="pms-date" type="date" value={date} onChange={(event) => setDate(event.target.value)} />
+            </div>
+            <OtpFields meta={otpMeta} value={otp} error={otpError} onChange={setOtp} />
           </div>
           <DialogFooter>
             <Button variant="secondary" onClick={() => setReschedule(null)}>
               Cancel
             </Button>
             <Button
-              disabled={!date || reschedule?.pmsN == null}
+              disabled={!date || !otpReady() || reschedule?.pmsN == null}
               onClick={() => {
                 if (!reschedule || reschedule.pmsN == null) return;
-                void act(reschedule, "/actions/pms", { action: "reschedule", n: reschedule.pmsN, date }).then(() => setReschedule(null));
+                void act(reschedule, "/actions/pms", { action: "reschedule", n: reschedule.pmsN, date, ...otpFields() }).then(() => setReschedule(null));
               }}
             >
               Save
@@ -230,7 +292,7 @@ export function ServiceDesk() {
 function matches(item: WorkCardItem, query: string): boolean {
   const needle = query.trim().toLowerCase();
   if (!needle) return true;
-  return `${item.customer} ${item.equipment} ${item.serial} ${item.summary}`.toLowerCase().includes(needle);
+  return `${item.customer} ${item.equipment} ${item.serial} ${item.engineer ?? ""} ${item.summary}`.toLowerCase().includes(needle);
 }
 
 function LeadColumn({
@@ -364,5 +426,54 @@ function LogCallDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+type RowOtp =
+  | { otpRequired: false }
+  | { otpRequired: true; challengeId: string; sentTo: string; previewCode?: string };
+
+function OtpFields({
+  meta,
+  value,
+  error,
+  onChange,
+}: {
+  meta: RowOtp | null;
+  value: string;
+  error: string;
+  onChange: (value: string) => void;
+}) {
+  if (error) {
+    return (
+      <p role="alert" className="text-sm text-ruby">
+        {error}
+      </p>
+    );
+  }
+  if (!meta) {
+    return <p className="text-sm text-ink-2">Sending OTP to the customer mail or mobile when those fields are present.</p>;
+  }
+  if (!meta.otpRequired) {
+    return <p className="text-sm text-ink-2">No customer mail or mobile on this row, so OTP is not required.</p>;
+  }
+  return (
+    <div className="flex flex-col gap-2">
+      <p className="text-sm text-ink-2">OTP sent to {meta.sentTo}.</p>
+      {meta.previewCode ? (
+        <p className="text-sm text-ink-2">
+          Delivery API is not configured here. Use code <span className="font-medium tabular-nums text-ink">{meta.previewCode}</span>.
+        </p>
+      ) : null}
+      <Label htmlFor="customer-otp">Customer OTP</Label>
+      <Input
+        id="customer-otp"
+        inputMode="numeric"
+        autoComplete="one-time-code"
+        maxLength={4}
+        value={value}
+        onChange={(event) => onChange(event.target.value.replace(/\D/g, "").slice(0, 4))}
+      />
+    </div>
   );
 }

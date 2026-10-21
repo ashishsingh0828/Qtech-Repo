@@ -1,9 +1,10 @@
+import type { DatasetColumn, DatasetDetail, RowProjection } from "@app/shared";
 import { formatDisplayDateTime, hasCapability } from "@app/shared";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, Skeleton } from "../../components/ui";
+import { Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, Pill, Skeleton, Spinner } from "../../components/ui";
 import { api } from "../../lib/api";
 import { errorText, isUnauthenticated } from "../../lib/errors";
 import { initials } from "../../lib/initials";
@@ -67,9 +68,23 @@ export function AdminDesk() {
     enabled: Boolean(datasetId),
     queryFn: () => api<Health>(`/api/datasets/${datasetId}/health`),
   });
+  const detail = useQuery({
+    queryKey: ["dataset", datasetId],
+    enabled: Boolean(datasetId),
+    queryFn: () => api<{ dataset: DatasetDetail }>(`/api/datasets/${datasetId}`),
+  });
+  const contracts = useQuery({
+    queryKey: ["dataset-rows", datasetId, "admin-preview"],
+    enabled: Boolean(datasetId),
+    queryFn: () => api<{ total: number; rows: RowProjection[] }>(`/api/datasets/${datasetId}/rows?limit=12`),
+  });
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [adding, setAdding] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const peak = Math.max(1, ...(workload.data?.members.map((member) => member.open) ?? [1]));
+  const columns = detail.data?.dataset.schema.columns ?? [];
 
   return (
     <div className="flex flex-col gap-4">
@@ -78,22 +93,50 @@ export function AdminDesk() {
       <section className="rounded-card border border-hairline bg-surface p-4">
         <div className="flex flex-wrap items-end gap-2">
           {hasCapability(user.role, "importData") ? (
-            <Button onClick={() => document.getElementById("admin-excel-upload")?.click()}>Upload Excel</Button>
+            <Button disabled={uploading} onClick={() => document.getElementById("admin-excel-upload")?.click()}>
+              {uploading ? <Spinner className="border-canvas border-t-transparent" /> : null}
+              Upload Excel
+            </Button>
           ) : null}
           {datasetId ? (
             <Button
               variant="secondary"
+              disabled={exporting}
               onClick={() => {
-                const board = boards.data?.boards.find((item) => item.id === datasetId);
-                void downloadWorkbook(datasetId, board?.name ?? "Engineer_Service_Data").then(
-                  () => toast.success("Workbook exported."),
-                  (error: unknown) => {
+                setExporting(true);
+                void downloadWorkbook(datasetId, "Engineer_Service_Data")
+                  .then(() => toast.success("Workbook exported."))
+                  .catch((error: unknown) => {
                     if (!isUnauthenticated(error)) toast.error(errorText(error, "Could not export the workbook."));
-                  },
-                );
+                  })
+                  .finally(() => setExporting(false));
               }}
             >
+              {exporting ? <Spinner /> : null}
               Download Excel
+            </Button>
+          ) : null}
+          {datasetId && hasCapability(user.role, "manageRows") ? (
+            <Button
+              variant="secondary"
+              disabled={adding}
+              onClick={() => {
+                setAdding(true);
+                void api<{ row: RowProjection }>(`/api/datasets/${datasetId}/rows`, { method: "POST", body: { atEnd: true } })
+                  .then(async (result) => {
+                    await queryClient.invalidateQueries({ queryKey: ["dataset-rows", datasetId] });
+                    await queryClient.invalidateQueries({ queryKey: ["boards"] });
+                    toast.success("Contract added.");
+                    void navigate(`/records/${datasetId}?row=${result.row.id}`);
+                  })
+                  .catch((error: unknown) => {
+                    if (!isUnauthenticated(error)) toast.error(errorText(error, "Could not add a contract."));
+                  })
+                  .finally(() => setAdding(false));
+              }}
+            >
+              {adding ? <Spinner /> : null}
+              Add contract
             </Button>
           ) : null}
           {datasetId ? (
@@ -121,6 +164,7 @@ export function AdminDesk() {
             }
             const body = new FormData();
             body.append("file", file);
+            setUploading(true);
             void api<{ dataset: { id: string } }>("/api/datasets/import", { method: "POST", body })
               .then(async (result) => {
                 rememberDataset(user.id, result.dataset.id);
@@ -131,10 +175,80 @@ export function AdminDesk() {
               })
               .catch((error: unknown) => {
                 if (!isUnauthenticated(error)) toast.error(errorText(error, "Could not import the workbook."));
-              });
+              })
+              .finally(() => setUploading(false));
           }}
         />
       </section>
+      {datasetId ? (
+        <section className="rounded-card border border-hairline bg-surface p-4">
+          <h2 className="text-[15px] font-semibold text-ink">Contracts and data validation</h2>
+          {contracts.isPending || detail.isPending ? <Skeleton className="mt-3 h-40" /> : null}
+          {contracts.isError ? <p className="mt-3 text-sm text-ruby">Could not load contracts.</p> : null}
+          {!contracts.isPending && !contracts.isError && (contracts.data?.rows.length ?? 0) === 0 ? (
+            <p className="mt-3 text-sm text-ink-2">No contracts in this sheet yet.</p>
+          ) : null}
+          {(contracts.data?.rows.length ?? 0) > 0 ? (
+            <div className="mt-3 overflow-x-auto">
+              <table className="w-full min-w-[720px] border-collapse text-[15px]">
+                <thead>
+                  <tr>
+                    <th className="border-b-2 border-hairline px-2.5 py-2 text-left text-[12.5px] font-semibold text-ink-2">Sr</th>
+                    <th className="border-b-2 border-hairline px-2.5 py-2 text-left text-[12.5px] font-semibold text-ink-2">Customer</th>
+                    <th className="border-b-2 border-hairline px-2.5 py-2 text-left text-[12.5px] font-semibold text-ink-2">Machine</th>
+                    <th className="border-b-2 border-hairline px-2.5 py-2 text-left text-[12.5px] font-semibold text-ink-2">Contract</th>
+                    <th className="border-b-2 border-hairline px-2.5 py-2 text-left text-[12.5px] font-semibold text-ink-2">Validated</th>
+                    <th className="border-b-2 border-hairline px-2.5 py-2 text-left text-[12.5px] font-semibold text-ink-2" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {contracts.data?.rows.map((row, index) => {
+                    const customer = cellText(row, columns, "customer_name") || filledValue(row, columns, 0);
+                    const city = cellText(row, columns, "city");
+                    const equipment = cellText(row, columns, "equipment", /euipment|equipment|instrument|model/i) || filledValue(row, columns, 1);
+                    const serial = cellText(row, columns, "serial");
+                    const type = cellText(row, columns, "contract_type");
+                    const start = cellText(row, columns, "start_date");
+                    const end = cellText(row, columns, "end_date");
+                    const validated = cellText(row, columns, "validated") || row.values.validated;
+                    const validatedLabel = validated == null || validated === "" ? "No" : String(validated);
+                    return (
+                      <tr key={row.id} className="border-b border-hairline align-top last:border-b-0">
+                        <td className="px-2.5 py-2 tabular-nums text-ink-2">{row.position || index + 1}</td>
+                        <td className="px-2.5 py-2">
+                          <div className="font-medium text-ink">{customer || "—"}</div>
+                          {city ? <div className="text-[13px] text-ink-2">{city}</div> : null}
+                        </td>
+                        <td className="px-2.5 py-2">
+                          <div className="font-medium text-ink">{equipment || "—"}</div>
+                          {serial ? <div className="text-[13px] text-ink-2">{serial}</div> : null}
+                        </td>
+                        <td className="px-2.5 py-2">
+                          <div>{type || "—"}</div>
+                          {start || end ? <div className="text-[13px] text-ink-2">{[start, end].filter(Boolean).join(" to ")}</div> : null}
+                        </td>
+                        <td className="px-2.5 py-2">
+                          <Pill tone={validatedLabel === "Yes" ? "emerald" : "amber"}>{validatedLabel}</Pill>
+                        </td>
+                        <td className="px-2.5 py-2">
+                          <Button size="sm" variant="secondary" asChild>
+                            <Link to={`/records/${datasetId}?row=${row.id}`}>Open</Link>
+                          </Button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          ) : null}
+          {(contracts.data?.total ?? 0) > (contracts.data?.rows.length ?? 0) ? (
+            <Button className="mt-3" variant="secondary" asChild>
+              <Link to={`/records/${datasetId}`}>Open all {contracts.data?.total} contracts</Link>
+            </Button>
+          ) : null}
+        </section>
+      ) : null}
       {selected.loading ? <Skeleton className="h-40" /> : null}
       {!selected.loading && selected.datasets.length === 0 ? <UploadDropzone /> : null}
       {!selected.loading && selected.datasets.length > 0 && !datasetId ? <QuietEmpty /> : null}
@@ -183,7 +297,7 @@ export function AdminDesk() {
             </ul>
           </section>
           <section className="flex flex-col gap-3">
-            <h2 className="text-[15px] font-semibold text-ink">Contracts and data validation</h2>
+            <h2 className="text-[15px] font-semibold text-ink">Excel sheets</h2>
             {boards.isPending ? <Skeleton className="h-32" /> : null}
             {boards.data?.boards.map((board) => {
               const total = board.stages.reduce((sum, stage) => sum + stage.count, 0);
@@ -219,7 +333,7 @@ export function AdminDesk() {
                       size="sm"
                       variant="secondary"
                       onClick={() => {
-                        void downloadWorkbook(board.id, board.name).then(
+                        void downloadWorkbook(board.id, "Engineer_Service_Data").then(
                           () => toast.success("Workbook exported."),
                           (error: unknown) => {
                             if (!isUnauthenticated(error)) toast.error(errorText(error, "Could not export the workbook."));
@@ -305,4 +419,21 @@ export function AdminDesk() {
       </Dialog>
     </div>
   );
+}
+
+function cellText(row: RowProjection, columns: DatasetColumn[], semantic: string, fallback?: RegExp): string {
+  const column =
+    columns.find((item) => item.semantic === semantic || item.key === semantic) ??
+    (fallback ? columns.find((item) => fallback.test(item.label) || fallback.test(item.key)) : undefined);
+  if (!column) return "";
+  const value = row.values[column.key];
+  return value == null || value === "" ? "" : String(value);
+}
+
+function filledValue(row: RowProjection, columns: DatasetColumn[], offset: number): string {
+  const values = columns
+    .map((column) => row.values[column.key])
+    .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+    .map((value) => value.trim());
+  return values[offset] ?? "";
 }

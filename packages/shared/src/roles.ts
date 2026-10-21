@@ -13,6 +13,7 @@ export type NavIcon = (typeof NAV_ICONS)[number];
 export type NavItem = {
   id: string;
   label: string;
+  hint?: string;
   icon: NavIcon;
   path: string;
 };
@@ -47,42 +48,42 @@ export const ROLE_REGISTRY: Record<Role, RoleDefinition> = {
     label: "Admin",
     homePath: "/",
     nav: [
-      { id: "home", label: "Data and validation", icon: "home", path: "/" },
-      { id: "records", label: "Contracts", icon: "rows", path: "/records" },
-      { id: "datasets", label: "Excel sheets", icon: "table", path: "/datasets" },
-      { id: "schema", label: "Schema", icon: "schema", path: "/schema" },
-      { id: "team", label: "Team", icon: "users", path: "/team" },
-      { id: "access", label: "Access", icon: "shield", path: "/access" },
-      { id: "activity", label: "Activity", icon: "activity", path: "/activity" },
-      { id: "trash", label: "Trash", icon: "trash", path: "/trash" },
+      { id: "home", label: "Data and validation", hint: "Upload or download Excel", icon: "home", path: "/" },
+      { id: "records", label: "Contracts", hint: "All imported rows", icon: "rows", path: "/records" },
+      { id: "datasets", label: "Excel sheets", hint: "Workbooks", icon: "table", path: "/datasets" },
+      { id: "schema", label: "Schema", hint: "Groups and columns", icon: "schema", path: "/schema" },
+      { id: "team", label: "Team", hint: "People and workload", icon: "users", path: "/team" },
+      { id: "access", label: "Access", hint: "Who can edit each group", icon: "shield", path: "/access" },
+      { id: "activity", label: "Activity", hint: "What changed", icon: "activity", path: "/activity" },
+      { id: "trash", label: "Trash", hint: "Restore deleted items", icon: "trash", path: "/trash" },
     ],
   },
   manager: {
     label: "Service Manager",
     homePath: "/",
     nav: [
-      { id: "home", label: "Escalations", icon: "home", path: "/" },
-      { id: "records", label: "Contracts", icon: "rows", path: "/records" },
-      { id: "datasets", label: "Excel sheets", icon: "table", path: "/datasets" },
-      { id: "schema", label: "Schema", icon: "schema", path: "/schema" },
-      { id: "activity", label: "Activity", icon: "activity", path: "/activity" },
-      { id: "trash", label: "Trash", icon: "trash", path: "/trash" },
+      { id: "home", label: "Escalations", hint: "PMs and AMC follow-up", icon: "home", path: "/" },
+      { id: "records", label: "Contracts", hint: "All imported rows", icon: "rows", path: "/records" },
+      { id: "datasets", label: "Excel sheets", hint: "Workbooks", icon: "table", path: "/datasets" },
+      { id: "schema", label: "Schema", hint: "Groups and columns", icon: "schema", path: "/schema" },
+      { id: "activity", label: "Activity", hint: "What changed", icon: "activity", path: "/activity" },
+      { id: "trash", label: "Trash", hint: "Restore deleted items", icon: "trash", path: "/trash" },
     ],
   },
   validator: {
     label: "Service Coordinator",
     homePath: "/",
     nav: [
-      { id: "home", label: "Validation desk", icon: "home", path: "/" },
-      { id: "records", label: "Contracts", icon: "rows", path: "/records" },
+      { id: "home", label: "Validation desk", hint: "Confirm contract data", icon: "home", path: "/" },
+      { id: "records", label: "Contracts", hint: "All imported rows", icon: "rows", path: "/records" },
     ],
   },
   service: {
     label: "Service Engineer",
     homePath: "/",
     nav: [
-      { id: "home", label: "My PMs and AMC", icon: "home", path: "/" },
-      { id: "records", label: "Contracts", icon: "rows", path: "/records" },
+      { id: "home", label: "My PMs and AMC", hint: "Acknowledge and close visits", icon: "home", path: "/" },
+      { id: "records", label: "Contracts", hint: "All imported rows", icon: "rows", path: "/records" },
     ],
   },
 };

@@ -125,6 +125,7 @@ export function WorkCardView({
             {item.customer}
           </button>
           {equipment ? <p className="truncate text-sm text-ink-2">{equipment}</p> : null}
+          {item.engineer ? <p className="truncate text-sm text-ink-2">{item.engineer}</p> : null}
           <div className="mt-2 flex flex-wrap gap-1">
             {item.pills.map((pill) => (
               <Pill key={pill.label} tone={pill.tone}>
@@ -205,7 +206,7 @@ export function WorkList({
   const [q, setQ] = useState("");
   const needle = q.trim().toLowerCase();
   const shown = needle
-    ? items.filter((item) => `${item.customer} ${item.equipment} ${item.serial} ${item.summary}`.toLowerCase().includes(needle))
+    ? items.filter((item) => `${item.customer} ${item.equipment} ${item.serial} ${item.engineer ?? ""} ${item.summary}`.toLowerCase().includes(needle))
     : items;
   if (loading) {
     return (
@@ -234,6 +235,7 @@ export function WorkList({
                   <th className="border-b-2 border-hairline px-2.5 py-2 text-left text-[12.5px] font-semibold text-ink-2">Date</th>
                   <th className="border-b-2 border-hairline px-2.5 py-2 text-left text-[12.5px] font-semibold text-ink-2">Machine</th>
                   <th className="border-b-2 border-hairline px-2.5 py-2 text-left text-[12.5px] font-semibold text-ink-2">Customer</th>
+                  <th className="border-b-2 border-hairline px-2.5 py-2 text-left text-[12.5px] font-semibold text-ink-2">Engineer</th>
                   <th className="border-b-2 border-hairline px-2.5 py-2 text-left text-[12.5px] font-semibold text-ink-2">Status</th>
                   <th className="border-b-2 border-hairline px-2.5 py-2 text-left text-[12.5px] font-semibold text-ink-2" />
                 </tr>
@@ -336,6 +338,7 @@ function WorkTableRow({
         </button>
         {item.city ? <div className="text-[13px] text-ink-2">{item.city}</div> : null}
       </td>
+      <td className="px-2.5 py-2 text-[15px] text-ink">{item.engineer || "Unassigned"}</td>
       <td className="px-2.5 py-2">
         <div className="flex flex-wrap gap-1">
           {item.pills.map((pill) => (

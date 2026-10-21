@@ -17,11 +17,12 @@ import {
   Skeleton,
   Spinner,
 } from "../../components/ui";
-import { ApiError, api } from "../../lib/api";
+import { api } from "../../lib/api";
 import { errorText, isUnauthenticated } from "../../lib/errors";
 import { formatWhen } from "../../lib/format";
 import { queryClient } from "../../lib/query";
 import { useAuth } from "../auth/auth-gate";
+import { downloadWorkbook } from "../records/download";
 import { rememberDataset } from "../records/storage";
 import { MergeDialog } from "./merge-dialog";
 
@@ -53,7 +54,7 @@ export function DatasetsPage() {
   async function onExport(dataset: DatasetSummary) {
     setExportingId(dataset.id);
     try {
-      await downloadDataset(dataset);
+      await downloadWorkbook(dataset.id, "Engineer_Service_Data");
       toast.success("Workbook exported.");
     } catch (error) {
       if (!isUnauthenticated(error)) toast.error(errorText(error, "Could not export the workbook."));
@@ -376,35 +377,6 @@ function ImportDialog({
       </DialogContent>
     </Dialog>
   );
-}
-
-async function downloadDataset(dataset: DatasetSummary): Promise<void> {
-  const response = await fetch(`/api/datasets/${dataset.id}/export`, { credentials: "same-origin" });
-  if (response.status === 401) {
-    window.dispatchEvent(new CustomEvent("unauthenticated", { detail: { path: `/api/datasets/${dataset.id}/export` } }));
-    throw new ApiError("Sign in required", 401, "UNAUTHENTICATED");
-  }
-  if (!response.ok) {
-    let message = "Could not export the workbook.";
-    try {
-      const payload: unknown = await response.json();
-      if (isRecord(payload) && typeof payload.error === "string") message = payload.error;
-    } catch {
-      message = "Could not export the workbook.";
-    }
-    throw new ApiError(message, response.status, "UNKNOWN");
-  }
-  const blob = await response.blob();
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = dataset.name.toLowerCase().endsWith(".xlsx") ? dataset.name : `${dataset.name}.xlsx`;
-  link.click();
-  URL.revokeObjectURL(url);
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
 }
 
 function DatasetsSkeleton() {

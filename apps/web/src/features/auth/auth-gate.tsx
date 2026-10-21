@@ -3,7 +3,6 @@ import { createContext, useContext, useEffect, useLayoutEffect } from "react";
 import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { Button, Skeleton } from "../../components/ui";
 import { api } from "../../lib/api";
-import { useAppName } from "../../lib/app-name";
 import { isUnauthenticated } from "../../lib/errors";
 import { queryClient } from "../../lib/query";
 import {
@@ -53,7 +52,7 @@ export function AuthGate() {
     const onUnauthenticated = (event: Event) => {
       const detail = event instanceof CustomEvent ? event.detail : undefined;
       const path = isRecord(detail) && typeof detail.path === "string" ? detail.path : "";
-      if (path === "/api/auth/login" || path === "/api/auth/me") return;
+      if (path === "/api/auth/login" || path === "/api/auth/otp" || path === "/api/auth/me") return;
       queryClient.setQueryData<SessionState | null>(meQueryKey, null);
     };
     window.addEventListener("unauthenticated", onUnauthenticated);
@@ -114,11 +113,15 @@ function RedirectToLogin({ path }: { path: string }) {
 }
 
 function BootError({ onRetry }: { onRetry: () => void }) {
-  const appName = useAppName();
   return (
     <div className="flex min-h-dvh items-center justify-center bg-canvas px-4">
       <div className="flex w-full max-w-md flex-col items-start gap-4 rounded-card border border-hairline bg-surface p-8">
-        <h1 className="font-serif text-[28px] font-normal text-ink">{appName}</h1>
+        <div className="flex items-center gap-2.5">
+          <span className="grid size-[34px] place-items-center rounded-[4px] bg-gold font-serif text-[18px] font-bold text-[#2a1d00]">
+            SD
+          </span>
+          <b className="font-serif text-2xl font-semibold text-ink">ServiceDesk</b>
+        </div>
         <p className="text-sm text-ink-2">Could not reach the server. Check your connection and try again.</p>
         <Button onClick={onRetry}>Retry</Button>
       </div>
@@ -128,12 +131,15 @@ function BootError({ onRetry }: { onRetry: () => void }) {
 
 function LoginSkeleton() {
   return (
-    <div className="flex min-h-dvh items-center justify-center bg-canvas px-4">
-      <div className="flex w-full max-w-md flex-col gap-4 rounded-card border border-hairline bg-surface p-8">
-        <Skeleton className="h-8 w-48" />
-        <Skeleton className="h-11 w-full" />
-        <Skeleton className="h-11 w-full" />
-        <Skeleton className="h-11 w-full" />
+    <div className="grid min-h-dvh bg-canvas lg:grid-cols-[244px_minmax(0,1fr)]">
+      <aside className="hidden bg-navy lg:block" />
+      <div className="flex min-h-dvh items-center justify-center px-4 py-10">
+        <div className="flex w-full max-w-md flex-col gap-4 rounded-card border border-hairline bg-surface p-8">
+          <Skeleton className="h-9 w-48" />
+          <Skeleton className="h-11 w-full" />
+          <Skeleton className="h-11 w-full" />
+          <Skeleton className="h-11 w-full" />
+        </div>
       </div>
     </div>
   );

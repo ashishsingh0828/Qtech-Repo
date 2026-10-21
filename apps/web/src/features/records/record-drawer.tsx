@@ -135,7 +135,7 @@ export function RecordDrawer({
 
   const customer = textOf(row, schema.columns, "customer_name");
   const serial = textOf(row, schema.columns, "serial");
-  const equipment = textOf(row, schema.columns, /equipment|instrument name|model/i);
+  const equipment = textOf(row, schema.columns, "equipment") || textOf(row, schema.columns, /euipment|equipment|instrument name|model/i);
   const phone = dialNumber(textOf(row, schema.columns, "mobile") || firstPhone(row, schema.columns), countryCode);
   const email = textOf(row, schema.columns, "email");
   const endDate = textOf(row, schema.columns, "end_date");

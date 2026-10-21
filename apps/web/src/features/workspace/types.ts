@@ -15,6 +15,7 @@ export type WorkCardItem = {
   customer: string;
   equipment: string;
   serial: string;
+  engineer?: string;
   summary: string;
   phone: string | null;
   email: string | null;

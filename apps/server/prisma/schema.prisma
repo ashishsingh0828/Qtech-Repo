@@ -35,6 +35,7 @@ model User {
   id           String    @id @default(uuid())
   name         String
   email        String    @unique
+  phone        String?
   passwordHash String
   role         Role
   active       Boolean   @default(true)
@@ -46,6 +47,26 @@ model User {
   sessions      Session[]
   datasets      Dataset[]      @relation("DatasetUploadedBy")
   notifications Notification[]
+  otpChallenges OtpChallenge[]
+}
+
+model OtpChallenge {
+  id         String    @id @default(uuid())
+  purpose    String
+  email      String?
+  phone      String?
+  userId     String?
+  user       User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  datasetId  String?
+  rowId      String?
+  codeHash   String
+  expiresAt  DateTime  @db.Timestamptz(3)
+  attempts   Int       @default(0)
+  consumedAt DateTime? @db.Timestamptz(3)
+  createdAt  DateTime  @default(now()) @db.Timestamptz(3)
+
+  @@index([userId])
+  @@index([rowId])
 }
 
 model Session {

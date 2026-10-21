@@ -196,8 +196,12 @@ async function exportCalls(datasetId: string, rowIds?: string[]) {
 
 function customerName(data: unknown): string {
   if (typeof data !== "object" || data === null || Array.isArray(data)) return "";
-  const value = (data as Record<string, unknown>).customer_name;
-  return typeof value === "string" ? value : "";
+  const record = data as Record<string, unknown>;
+  for (const key of ["customer_name", "customer"]) {
+    const value = record[key];
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return "";
 }
 
 function datasetName(filename: string): string {
@@ -207,6 +211,9 @@ function datasetName(filename: string): string {
 }
 
 function exportFilename(name: string): string {
-  const cleaned = name.replace(/[\\/:*?"<>|\r\n]+/g, " ").trim() || "Engineer_Service_Data";
+  const cleaned = name.replace(/[\\/:*?"<>|\r\n]+/g, " ").trim();
+  if (!cleaned || /^new(?:\s*\(\d+\))?$/i.test(cleaned) || /^dataset$/i.test(cleaned)) {
+    return "Engineer_Service_Data.xlsx";
+  }
   return cleaned.toLowerCase().endsWith(".xlsx") ? cleaned : `${cleaned}.xlsx`;
 }

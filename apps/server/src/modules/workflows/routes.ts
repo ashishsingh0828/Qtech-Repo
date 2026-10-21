@@ -15,6 +15,7 @@ import {
   callsListSchema,
   followupActionSchema,
   pmsActionSchema,
+  rowOtpSchema,
   summarySchema,
   undoSchema,
   validateActionSchema,
@@ -30,6 +31,7 @@ import {
   listAssignees,
   listCalls,
   logCall,
+  requestRowOtp,
   resolveCall,
   runAmc,
   runAssign,
@@ -88,6 +90,16 @@ workflowRouter.post(
   asyncHandler(async (req, res) => {
     const { params, body } = validated<typeof amcActionSchema._output>(req);
     const result = await runAmc(currentUser(req), params.id, params.rowId, body);
+    res.status(200).json(result);
+  }),
+);
+
+workflowRouter.post(
+  "/:id/rows/:rowId/otp",
+  validate(rowOtpSchema),
+  asyncHandler(async (req, res) => {
+    const { params, body } = validated<typeof rowOtpSchema._output>(req);
+    const result = await requestRowOtp(currentUser(req), params.id, params.rowId, body.purpose);
     res.status(200).json(result);
   }),
 );
