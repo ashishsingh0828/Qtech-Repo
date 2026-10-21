@@ -58,7 +58,7 @@ export const kpisSchema = z.object({
 
 export const deskSchema = z.object({
   body: z.unknown(),
-  query: z.object({ datasetId: z.preprocess(one, z.uuid()) }),
+  query: z.object({ datasetId: z.preprocess(one, z.uuid().optional()) }),
   params: z.unknown(),
 });
 

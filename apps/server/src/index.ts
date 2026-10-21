@@ -5,6 +5,7 @@ import { ensureDefaultGroupAccess } from "./lib/access";
 import { ensureBootstrapAdmin } from "./modules/auth/service";
 import { ensureAllSystemColumns } from "./modules/datasets/systemColumns";
 import { startScheduler, stopScheduler } from "./modules/jobs/schedule";
+import { ensureDemoDataset } from "./modules/workspace/demo";
 import { startOutboxWorker, stopOutboxWorker } from "./modules/notifications/worker";
 import { databaseAddress } from "./lib/databaseAddress";
 import { logger } from "./lib/logger";
@@ -44,6 +45,12 @@ async function main(): Promise<void> {
     await ensureAllSystemColumns();
   } catch (error) {
     logger.error({ err: error }, "Failed to ensure system columns");
+  }
+
+  try {
+    await ensureDemoDataset();
+  } catch (error) {
+    logger.error({ err: error }, "Failed to ensure demo dataset");
   }
 
   const app = createApp();

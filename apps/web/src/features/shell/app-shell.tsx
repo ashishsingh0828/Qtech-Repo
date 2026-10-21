@@ -15,7 +15,6 @@ import { useAuth } from "../auth/auth-gate";
 import { ChangePasswordDialog } from "../auth/change-password-dialog";
 import { endSession } from "../auth/session";
 import { NotificationBell } from "../notifications/bell";
-import { DatasetSwitcher } from "../records/dataset-switcher";
 import { LiveStatus, RealtimeProvider } from "../realtime/realtime";
 import { CommandPalette } from "../workspace/command-palette";
 import { isAccountsUser } from "../workspace/desk-kit";
@@ -133,8 +132,7 @@ export function AppShell() {
           <NavLink to="/" className="hidden min-w-0 shrink truncate font-serif text-xl font-semibold text-ink sm:inline xl:hidden">
             ServiceDesk
           </NavLink>
-          <DatasetSwitcher />
-          <p className="hidden min-w-0 truncate text-sm text-ink-2 xl:block">{copy.blurb}</p>
+          <p className="hidden min-w-0 truncate text-sm text-ink-2 sm:block">{copy.blurb}</p>
           <div className="ml-auto flex items-center gap-2">
             <LiveStatus />
             <NotificationBell />

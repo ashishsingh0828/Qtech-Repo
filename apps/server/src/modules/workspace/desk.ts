@@ -3,6 +3,7 @@ import { calendarDaysBetween, parseDatasetSchema, todayInTimeZone } from "@app/s
 import { env } from "../../env";
 import { AppError } from "../../lib/errors";
 import { prisma } from "../../lib/prisma";
+import { ensureDemoDataset } from "./demo";
 
 const LAD = [-45, -30, -20, -15, -10, -7, -5, -3, -2, -1, 0, 0, 1, 2, 3, 4, 5, 6, 7];
 const SUP = new Set([-30, -20, -15, -10]);
@@ -52,11 +53,27 @@ export type DeskContract = {
 
 export type DeskBoard = {
   today: string;
+  datasetId: string;
   contracts: DeskContract[];
   engineers: Array<{ id: string; name: string }>;
 };
 
-export async function deskBoard(_actor: PublicUser, datasetId: string): Promise<DeskBoard> {
+export async function deskBoard(_actor: PublicUser, datasetId?: string): Promise<DeskBoard> {
+  let first: DeskBoard | null = null;
+  if (datasetId) {
+    try {
+      first = await loadBoard(datasetId);
+      if (first.contracts.length > 0) return first;
+    } catch (error) {
+      if (!(error instanceof AppError) || error.code !== "NOT_FOUND") throw error;
+    }
+  }
+  const demo = await ensureDemoDataset();
+  if (first && first.datasetId === demo.id) return first;
+  return loadBoard(demo.id);
+}
+
+async function loadBoard(datasetId: string): Promise<DeskBoard> {
   const dataset = await prisma.dataset.findFirst({
     where: { id: datasetId, deletedAt: null },
     select: { schema: true },
@@ -77,8 +94,11 @@ export async function deskBoard(_actor: PublicUser, datasetId: string): Promise<
   });
   return {
     today,
+    datasetId,
     engineers,
-    contracts: rows.map((row) => toContract(jsonRecord(row.data), schema, row, today)),
+    contracts: rows
+      .map((row) => toContract(jsonRecord(row.data), schema, row, today))
+      .filter((item) => Boolean(item.customer && item.equip && !item.customer.includes("@"))),
   };
 }
 
@@ -117,7 +137,7 @@ function toContract(
   return {
     rowId: row.id,
     version: row.version,
-    customer: pick(data, cols, "customer_name", /customer/i) || pick(data, cols, "email", /mail/i),
+    customer: pick(data, cols, "customer_name", /customer/i),
     city: pick(data, cols, "city", /^city$/i),
     contact: pick(data, cols, "contact_person", /contact/i),
     mobile: pick(data, cols, "mobile", /mobile|phone/i),

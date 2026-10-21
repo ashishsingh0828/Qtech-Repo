@@ -1,8 +1,6 @@
-import { createBrowserRouter } from "react-router-dom";
+import { createBrowserRouter, Navigate } from "react-router-dom";
 import { AccessPage } from "../features/access/access-page";
 import { DatasetsPage } from "../features/datasets/datasets-page";
-import { RecordsIndexPage } from "../features/records/records-index";
-import { RecordsPage } from "../features/records/records-page";
 import { SchemaPage, SchemaEntry } from "../features/schema/schema-page";
 import { TrashPage } from "../features/trash/trash-page";
 import { AuthGate } from "../features/auth/auth-gate";
@@ -49,8 +47,8 @@ export const router = createBrowserRouter([
               </RequireCapability>
             ),
           },
-          { path: "records", element: <RecordsIndexPage /> },
-          { path: "records/:datasetId", element: <RecordsPage /> },
+          { path: "records", element: <Navigate to="/" replace /> },
+          { path: "records/:datasetId", element: <Navigate to="/" replace /> },
           {
             path: "team",
             element: (

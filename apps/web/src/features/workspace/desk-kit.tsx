@@ -1,7 +1,6 @@
 import type { DatasetColumn, DatasetDetail, PublicUser } from "@app/shared";
-import { formatDisplayDate } from "@app/shared";
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useState, type FormEvent, type MouseEvent, type ReactNode } from "react";
 import { toast } from "sonner";
 import {
   Button,
@@ -40,9 +39,17 @@ export const CONTRACT_TYPES = [
   "Paid Single Visit",
 ] as const;
 
-export const DELAY_REASONS = ["Customer Not Available", "Out Station Calls Club", "Other"] as const;
+export const DELAY_REASONS = ["Customer Not Available", "Out Station Calls Club", "Other reason"] as const;
 export const AMC_OUTCOMES = ["Pending", "Delayed", "Refusal", "Accepted"] as const;
-export const AMC_REASONS = ["Customer Not Available", "Customer Not Agreed", "Price", "Other"] as const;
+export const AMC_REASONS = [
+  "Customer Not Available",
+  "Out Station Calls Club",
+  "Other reason",
+  "Customer Not Agreed",
+  "Service not up to mark",
+  "Not happy with service",
+] as const;
+export type RowTone = "late" | "run" | "done" | "open";
 
 export type DeskReminder = { n: number; lab: string; to: string; lvl: "" | "warn" | "bad" };
 export type DeskPm = {
@@ -80,6 +87,7 @@ export type DeskContract = {
 };
 export type DeskBoard = {
   today: string;
+  datasetId: string;
   contracts: DeskContract[];
   engineers: Array<{ id: string; name: string }>;
 };
@@ -89,11 +97,10 @@ export function isAccountsUser(user: { email: string }): boolean {
   return user.email.toLowerCase() === "accounts@example.com";
 }
 
-export function useDesk(datasetId: string | null) {
+export function useDesk(datasetId?: string | null) {
   return useQuery({
-    queryKey: ["desk", datasetId],
-    enabled: Boolean(datasetId),
-    queryFn: () => api<DeskBoard>(`/api/workspace/desk?datasetId=${datasetId}`),
+    queryKey: ["desk", datasetId ?? "auto"],
+    queryFn: () => api<DeskBoard>(datasetId ? `/api/workspace/desk?datasetId=${datasetId}` : "/api/workspace/desk"),
   });
 }
 
@@ -114,7 +121,29 @@ export function monthLabel(iso: string): string {
 }
 
 export function showDate(value: string): string {
-  return value ? formatDisplayDate(value) : "—";
+  return value || "—";
+}
+
+export function pmTone(pm: DeskPm, today: string): RowTone {
+  if (pm.state === "Closed") return "done";
+  if (pm.date && pm.date < today) return "late";
+  if (pm.state === "Acknowledged" || pm.state === "Delayed") return "run";
+  return "open";
+}
+
+export function amcTone(contract: DeskContract): RowTone {
+  if (contract.amc.state === "Accepted") return "done";
+  if ((contract.daysLeft ?? 1) < 0) return "late";
+  if (contract.amc.state === "Delayed") return "run";
+  return "open";
+}
+
+export function validTone(contract: DeskContract): RowTone {
+  return contract.valid === "Yes" ? "done" : "run";
+}
+
+export function stopRow(event: MouseEvent): void {
+  event.stopPropagation();
 }
 
 export function DeskHeader({ title, subtitle, extra }: { title: string; subtitle: string; extra?: ReactNode }) {
@@ -161,8 +190,59 @@ export function Th({ children, className }: { children?: ReactNode; className?: 
   return <th className={cn("border-b-2 border-hairline px-2.5 py-2 text-left text-[12.5px] font-semibold text-ink-2", className)}>{children}</th>;
 }
 
-export function Td({ children, className }: { children?: ReactNode; className?: string }) {
-  return <td className={cn("border-b border-hairline px-2.5 py-2 align-top", className)}>{children}</td>;
+export function openModal(action: () => void): void {
+  window.setTimeout(action, 50);
+}
+
+export function Tr({ children, onOpen }: { children: ReactNode; onOpen?: () => void }) {
+  return (
+    <tr
+      className={cn(onOpen && "cursor-pointer hover:bg-surface-2")}
+      onClick={onOpen ? () => openModal(onOpen) : undefined}
+      onKeyDown={
+        onOpen
+          ? (event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                openModal(onOpen);
+              }
+            }
+          : undefined
+      }
+      role={onOpen ? "button" : undefined}
+      tabIndex={onOpen ? 0 : undefined}
+    >
+      {children}
+    </tr>
+  );
+}
+
+const ACCENT: Record<RowTone, string> = {
+  late: "shadow-[inset_3px_0_0_#A63A38]",
+  run: "shadow-[inset_3px_0_0_#96620F]",
+  done: "shadow-[inset_3px_0_0_#1F6F4F]",
+  open: "shadow-[inset_3px_0_0_#E8E4DD]",
+};
+
+export function Td({
+  children,
+  className,
+  accent,
+  onClick,
+}: {
+  children?: ReactNode;
+  className?: string;
+  accent?: RowTone;
+  onClick?: (event: MouseEvent<HTMLTableCellElement>) => void;
+}) {
+  return (
+    <td
+      className={cn("border-b border-hairline px-2.5 py-2 align-top", accent && `pl-3.5 ${ACCENT[accent]}`, className)}
+      onClick={onClick}
+    >
+      {children}
+    </td>
+  );
 }
 
 export function ReminderTag({ item }: { item: DeskReminder | null }) {
@@ -186,14 +266,24 @@ export function StatusPill({ value }: { value: string }) {
 
 export function DaysTag({ days }: { days: number | null }) {
   if (days == null) return null;
-  if (days < 0) return <span className="text-[12px] text-ruby">Expired {Math.abs(days)}d ago</span>;
-  return <span className="text-[12px] text-amber">{days}d left</span>;
+  const expired = days < 0;
+  const width = expired ? 100 : Math.max(4, Math.min(100, (days / 365) * 100));
+  const tone = expired ? "text-ruby" : days <= 60 ? "text-amber" : "text-emerald";
+  const fill = expired ? "bg-ruby" : days <= 60 ? "bg-amber" : "bg-emerald";
+  return (
+    <div>
+      <span className={cn("text-[12px]", tone)}>{expired ? `Expired ${Math.abs(days)}d ago` : `${days}d left`}</span>
+      <span className="mt-1.5 block h-1 min-w-24 overflow-hidden rounded-sm bg-hairline" aria-hidden>
+        <span className={cn("block h-full", fill)} style={{ width: `${width}%` }} />
+      </span>
+    </div>
+  );
 }
 
 export function DeskEmpty({ loading, error, empty, children }: { loading: boolean; error: boolean; empty: boolean; children: ReactNode }) {
   if (loading) return <Skeleton className="h-40" />;
   if (error) return <p className="text-sm text-ruby">Could not load this desk.</p>;
-  if (empty) return <p className="text-sm text-ink-2">Nothing on this desk yet. Import the Excel sheet from Admin.</p>;
+  if (empty) return <p className="text-sm text-ink-2">Nothing on this desk yet. Admin can reset the demo data.</p>;
   return <>{children}</>;
 }
 
@@ -207,7 +297,7 @@ function OtpBox({ otp, code, onCode }: { otp: RowOtp | null; code: string; onCod
   return (
     <div className="flex flex-col gap-1.5">
       <p className="text-[13px] text-ink-2">
-        OTP {otp.previewCode ? otp.previewCode : ""} sent to the customer{otp.sentTo ? ` (${otp.sentTo})` : ""}.
+        OTP{otp.previewCode ? ` ${otp.previewCode}` : ""} sent to the Excel row mail and mobile{otp.sentTo ? ` (${otp.sentTo})` : ""}.
       </p>
       <Label htmlFor="customer-otp">Customer OTP</Label>
       <Input id="customer-otp" inputMode="numeric" maxLength={4} value={code} onChange={(event) => onCode(event.target.value.replace(/\D/g, "").slice(0, 4))} />
@@ -289,7 +379,9 @@ export function DelayDialog({
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-3 overflow-y-auto px-5 py-2">
-            {otp?.previewCode ? <p className="text-[13px] text-ink-2">Demo: OTP {otp.previewCode} sent to the customer.</p> : null}
+            {otp?.previewCode ? (
+              <p className="text-[13px] text-ink-2">Demo: OTP {otp.previewCode} sent to the customer mail and mobile on this row.</p>
+            ) : null}
             <Field label="Reason">
               <Select value={reason} onValueChange={setReason}>
                 <SelectTrigger>
@@ -386,7 +478,9 @@ export function CloseDialog({
             <DialogDescription>{contract ? `${contract.customer} · ${contract.equip}` : ""}</DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-3 overflow-y-auto px-5 py-2">
-            {otp?.previewCode ? <p className="text-[13px] text-ink-2">Demo: OTP {otp.previewCode} sent to the customer.</p> : null}
+            {otp?.previewCode ? (
+              <p className="text-[13px] text-ink-2">Demo: OTP {otp.previewCode} sent to the customer mail and mobile on this row.</p>
+            ) : null}
             <Field label="Service report (file name)">
               <Input value={report} onChange={(event) => setReport(event.target.value)} required />
             </Field>
@@ -482,7 +576,9 @@ export function AmcDialog({
             <DialogTitle>AMC follow-up{contract ? `: ${contract.customer}` : ""}</DialogTitle>
           </DialogHeader>
           <div className="flex flex-col gap-3 overflow-y-auto px-5 py-2">
-            {otp?.previewCode ? <p className="text-[13px] text-ink-2">Demo: OTP {otp.previewCode} sent to the customer.</p> : null}
+            {otp?.previewCode ? (
+              <p className="text-[13px] text-ink-2">Demo: OTP {otp.previewCode} sent to the customer mail and mobile on this row.</p>
+            ) : null}
             <Field label="Outcome">
               <Select value={outcome} onValueChange={setOutcome}>
                 <SelectTrigger>
@@ -624,10 +720,12 @@ export function ValidateDialog({
 export function AddContractDialog({
   open,
   datasetId,
+  engineers,
   onClose,
 }: {
   open: boolean;
   datasetId: string;
+  engineers?: Array<{ id: string; name: string }>;
   onClose: () => void;
 }) {
   const [pending, setPending] = useState(false);
@@ -688,7 +786,7 @@ export function AddContractDialog({
           body: { version: created.row.version, changes },
         });
       }
-      await queryClient.invalidateQueries({ queryKey: ["desk", datasetId] });
+      await queryClient.invalidateQueries({ queryKey: ["desk"] });
       await queryClient.invalidateQueries({ queryKey: ["dataset-rows", datasetId] });
       toast.success("Contract added.");
       onClose();
@@ -756,7 +854,23 @@ export function AddContractDialog({
               <Input type="date" value={form.end_date} onChange={(event) => set("end_date", event.target.value)} />
             </Field>
             <Field label="Engineer">
-              <Input value={form.engineer} onChange={(event) => set("engineer", event.target.value)} />
+              {engineers && engineers.length > 0 ? (
+                <Select value={form.engineer || "none"} onValueChange={(value) => set("engineer", value === "none" ? "" : value)}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Assign" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Unassigned</SelectItem>
+                    {engineers.map((item) => (
+                      <SelectItem key={item.id} value={item.name}>
+                        {item.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <Input value={form.engineer} onChange={(event) => set("engineer", event.target.value)} />
+              )}
             </Field>
           </div>
           <DialogFooter>
@@ -771,6 +885,78 @@ export function AddContractDialog({
         </form>
       </DialogContent>
     </Dialog>
+  );
+}
+
+export function ContractModal({
+  open,
+  contract,
+  today,
+  onClose,
+  children,
+}: {
+  open: boolean;
+  contract: DeskContract | null;
+  today?: string;
+  onClose: () => void;
+  children?: ReactNode;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
+      <DialogContent className="md:max-h-[90vh]">
+        <DialogHeader>
+          <DialogTitle>{contract ? `${contract.customer} · ${contract.equip}` : "Contract"}</DialogTitle>
+          <DialogDescription>{contract ? `${contract.type || "Contract"} · ${contract.city}` : ""}</DialogDescription>
+        </DialogHeader>
+        {contract ? (
+          <div className="flex max-h-[60vh] flex-col gap-3 overflow-y-auto px-5 py-2">
+            <div className="grid gap-2 sm:grid-cols-2">
+              <Fact label="Contact" value={contract.contact} />
+              <Fact label="Mobile" value={contract.mobile} />
+              <Fact label="Mail" value={contract.mail} />
+              <Fact label="Location" value={contract.loc} />
+              <Fact label="Serial" value={contract.serial} />
+              <Fact label="Engineer" value={contract.eng || "Unassigned"} />
+              <Fact label="Start" value={showDate(contract.start)} />
+              <Fact label="End" value={showDate(contract.end)} />
+              <Fact label="Validated" value={contract.valid === "Yes" ? `Yes${contract.vby ? ` by ${contract.vby}` : ""}` : "No"} />
+              <Fact label="AMC" value={contract.amc.state || "Not in window"} />
+            </div>
+            {contract.pms.length > 0 ? (
+              <div>
+                <p className="mb-1.5 text-[12.5px] font-semibold text-ink-2">PM visits</p>
+                <ul className="flex flex-col gap-1">
+                  {contract.pms.map((pm) => (
+                    <li key={pm.n} className="flex min-w-0 items-center justify-between gap-2 text-[13px]">
+                      <span className="min-w-0 truncate tabular-nums text-ink">
+                        PM {pm.n} · {showDate(pm.date)}
+                      </span>
+                      <StatusPill value={pm.state} />
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+            {today ? <p className="text-[12px] text-ink-2">Today {today}</p> : null}
+            {children ? <div className="flex flex-wrap gap-2 pt-1">{children}</div> : null}
+          </div>
+        ) : null}
+        <DialogFooter>
+          <Button type="button" variant="secondary" onClick={onClose}>
+            Close
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function Fact({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-0">
+      <p className="text-[12.5px] font-semibold text-ink-2">{label}</p>
+      <p className="truncate text-[15px] text-ink">{value || "—"}</p>
+    </div>
   );
 }
 

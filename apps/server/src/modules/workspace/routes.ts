@@ -2,7 +2,9 @@ import { Router } from "express";
 import { asyncHandler } from "../../lib/asyncHandler";
 import { validate, validated } from "../../lib/validate";
 import { currentUser, requireAuth } from "../../middleware/auth";
+import { AppError } from "../../lib/errors";
 import { activityListSchema, cardsSchema, deskSchema, kpisSchema, searchSchema, workloadSchema } from "./schema";
+import { resetDemoDataset } from "./demo";
 import { deskBoard } from "./desk";
 import { assertLead, datasetBoards, listFeed, roleKpis, searchHub, teamWorkload, workCards } from "./service";
 
@@ -74,6 +76,18 @@ workspaceRouter.get(
   asyncHandler(async (req, res) => {
     const { query } = validated<typeof deskSchema._output>(req);
     const result = await deskBoard(currentUser(req), query.datasetId);
+    res.status(200).json(result);
+  }),
+);
+
+workspaceRouter.post(
+  "/demo-reset",
+  asyncHandler(async (req, res) => {
+    const actor = currentUser(req);
+    if (actor.role !== "admin") {
+      throw new AppError("FORBIDDEN", 403, "Only admin can reset demo data.");
+    }
+    const result = await resetDemoDataset(actor);
     res.status(200).json(result);
   }),
 );

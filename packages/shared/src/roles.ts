@@ -49,7 +49,6 @@ export const ROLE_REGISTRY: Record<Role, RoleDefinition> = {
     homePath: "/",
     nav: [
       { id: "home", label: "Data and validation", hint: "Upload or download Excel", icon: "home", path: "/" },
-      { id: "records", label: "Contracts", hint: "Imported rows", icon: "rows", path: "/records" },
       { id: "team", label: "Team", hint: "People", icon: "users", path: "/team" },
     ],
   },

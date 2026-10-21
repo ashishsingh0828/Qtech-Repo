@@ -48,14 +48,14 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
               <Hit key={page.path} label={page.label} hint="Page" onClick={() => go(page.path)} />
             ))}
             {hit?.datasets.map((dataset) => (
-              <Hit key={dataset.id} label={dataset.name} hint="Dataset" onClick={() => go(`/records/${dataset.id}`, dataset.id)} />
+              <Hit key={dataset.id} label={dataset.name} hint="Dataset" onClick={() => go("/", dataset.id)} />
             ))}
             {hit?.records.map((record) => (
               <Hit
                 key={`${record.datasetId}:${record.rowId}`}
                 label={record.label}
                 hint={record.hint}
-                onClick={() => go(`/records/${record.datasetId}?row=${record.rowId}`, record.datasetId)}
+                onClick={() => go("/", record.datasetId)}
               />
             ))}
             {hit?.columns.map((column) => (
