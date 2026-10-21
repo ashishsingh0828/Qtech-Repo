@@ -10,9 +10,9 @@ export function RecordsIndexPage() {
   if (datasetId) return <Navigate to={`/records/${datasetId}`} replace />;
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title="Records" subtitle="Open a dataset to work with its rows." />
+      <PageHeader title="Contracts" subtitle="Open a sheet to work with its rows." />
       <div className="rounded-card border border-hairline bg-surface">
-        <EmptyState message="No dataset selected yet." action={<Button onClick={() => void navigate("/datasets")}>Browse datasets</Button>} />
+        <EmptyState message="No sheet selected yet." action={<Button onClick={() => void navigate("/datasets")}>Browse Excel sheets</Button>} />
       </div>
     </div>
   );

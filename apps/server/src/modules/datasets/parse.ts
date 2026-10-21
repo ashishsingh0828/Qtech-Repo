@@ -73,12 +73,14 @@ const LABEL_RULES: Array<{ pattern: RegExp; key: string; type: ColumnType }> = [
 export async function parseWorkbook(buffer: Buffer): Promise<ParsedWorkbook> {
   const workbook = new Workbook();
   await workbook.xlsx.load(buffer as unknown as Parameters<Workbook["xlsx"]["load"]>[0]);
-  let best: { count: number; worksheet: Worksheet; grid: Grid } | null = null;
+  let best: { score: number; worksheet: Worksheet; grid: Grid } | null = null;
   for (const worksheet of workbook.worksheets) {
     const grid = readGrid(worksheet);
     const count = countCells(grid);
     if (count === 0) continue;
-    if (!best || count > best.count) best = { count, worksheet, grid };
+    const named = /data/i.test(worksheet.name) ? 1_000_000 : 0;
+    const score = named + count;
+    if (!best || score > best.score) best = { score, worksheet, grid };
   }
   if (!best) {
     throw new AppError("VALIDATION", 400, "The workbook has no data.");

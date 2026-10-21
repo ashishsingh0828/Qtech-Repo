@@ -23,14 +23,33 @@ export type RoleDefinition = {
   nav: readonly NavItem[];
 };
 
+export const ROLE_COPY: Record<Role, { title: string; blurb: string }> = {
+  admin: {
+    title: "Admin",
+    blurb: "Upload or download the Excel sheet, add contracts and validate data.",
+  },
+  manager: {
+    title: "Service Manager",
+    blurb: "PMs that reminders have escalated, and the AMC follow-up pipeline.",
+  },
+  validator: {
+    title: "Service Coordinator",
+    blurb: "Confirm customer and contract data, then keep validation moving.",
+  },
+  service: {
+    title: "Service Engineer",
+    blurb: "Acknowledge, delay or close your PM visits. Closing records the visit done date.",
+  },
+};
+
 export const ROLE_REGISTRY: Record<Role, RoleDefinition> = {
   admin: {
     label: "Admin",
     homePath: "/",
     nav: [
-      { id: "home", label: "Command Center", icon: "home", path: "/" },
-      { id: "records", label: "Records", icon: "rows", path: "/records" },
-      { id: "datasets", label: "Datasets", icon: "table", path: "/datasets" },
+      { id: "home", label: "Data and validation", icon: "home", path: "/" },
+      { id: "records", label: "Contracts", icon: "rows", path: "/records" },
+      { id: "datasets", label: "Excel sheets", icon: "table", path: "/datasets" },
       { id: "schema", label: "Schema", icon: "schema", path: "/schema" },
       { id: "team", label: "Team", icon: "users", path: "/team" },
       { id: "access", label: "Access", icon: "shield", path: "/access" },
@@ -39,31 +58,31 @@ export const ROLE_REGISTRY: Record<Role, RoleDefinition> = {
     ],
   },
   manager: {
-    label: "Manager",
+    label: "Service Manager",
     homePath: "/",
     nav: [
-      { id: "home", label: "Control Room", icon: "home", path: "/" },
-      { id: "records", label: "Records", icon: "rows", path: "/records" },
-      { id: "datasets", label: "Datasets", icon: "table", path: "/datasets" },
+      { id: "home", label: "Escalations", icon: "home", path: "/" },
+      { id: "records", label: "Contracts", icon: "rows", path: "/records" },
+      { id: "datasets", label: "Excel sheets", icon: "table", path: "/datasets" },
       { id: "schema", label: "Schema", icon: "schema", path: "/schema" },
       { id: "activity", label: "Activity", icon: "activity", path: "/activity" },
       { id: "trash", label: "Trash", icon: "trash", path: "/trash" },
     ],
   },
   validator: {
-    label: "Validator",
+    label: "Service Coordinator",
     homePath: "/",
     nav: [
-      { id: "home", label: "My Desk", icon: "home", path: "/" },
-      { id: "records", label: "Records", icon: "rows", path: "/records" },
+      { id: "home", label: "Validation desk", icon: "home", path: "/" },
+      { id: "records", label: "Contracts", icon: "rows", path: "/records" },
     ],
   },
   service: {
-    label: "Service",
+    label: "Service Engineer",
     homePath: "/",
     nav: [
-      { id: "home", label: "Service Desk", icon: "home", path: "/" },
-      { id: "records", label: "Records", icon: "rows", path: "/records" },
+      { id: "home", label: "My PMs and AMC", icon: "home", path: "/" },
+      { id: "records", label: "Contracts", icon: "rows", path: "/records" },
     ],
   },
 };

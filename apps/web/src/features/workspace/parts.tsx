@@ -1,4 +1,4 @@
-import { MAX_UPLOAD_MB } from "@app/shared";
+import { MAX_UPLOAD_MB, ROLE_COPY } from "@app/shared";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
 import { Link } from "react-router-dom";
@@ -21,7 +21,6 @@ import {
 } from "../../components/ui";
 import { api } from "../../lib/api";
 import { errorText, isUnauthenticated } from "../../lib/errors";
-import { greeting } from "../../lib/greeting";
 import { queryClient } from "../../lib/query";
 import { cn } from "../../lib/utils";
 import { useAuth } from "../auth/auth-gate";
@@ -32,9 +31,9 @@ import type { KpiCard, WorkCardItem } from "./types";
 const emptyActive = (): string => "";
 
 export function WorkspaceHeader() {
-  const { user, timeZone } = useAuth();
-  const { hello, dateLabel } = greeting(user.name, timeZone || "UTC");
-  return <PageHeader title={hello} subtitle={dateLabel} />;
+  const { user } = useAuth();
+  const copy = ROLE_COPY[user.role];
+  return <PageHeader title={copy.title} subtitle={copy.blurb} />;
 }
 
 export function KpiRow({ datasetId }: { datasetId: string | null }) {
@@ -55,7 +54,7 @@ export function KpiRow({ datasetId }: { datasetId: string | null }) {
     return <p className="text-sm text-ink-2">Could not load the summary.</p>;
   }
   return (
-    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+    <div className="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
       {query.data.kpis.map((card) => (
         <KpiTile key={card.key} card={card} />
       ))}
@@ -64,43 +63,24 @@ export function KpiRow({ datasetId }: { datasetId: string | null }) {
 }
 
 function KpiTile({ card }: { card: KpiCard }) {
+  const late = /overdue|expired|late|unverified|missing/i.test(`${card.key} ${card.label}`);
+  const soon = /due|pending|soon|expir/i.test(`${card.key} ${card.label}`);
   const body = (
     <>
-      <div className="flex items-start justify-between gap-3">
-        <p className="font-serif text-4xl leading-none text-ink">{card.value}</p>
-        {card.target ? <ProgressRing value={card.value} target={card.target} /> : null}
-      </div>
-      <p className="mt-3 text-xs font-medium uppercase tracking-wide text-ink-2">{card.label}</p>
-      <p className="mt-1 text-sm text-ink-2">{card.hint}</p>
+      <b className="mb-1 block font-serif text-[40px] font-semibold leading-none text-ink">{card.value}</b>
+      <span className="text-[13px] text-ink-2">{card.label}</span>
+      {card.hint ? <p className="mt-1 text-xs text-muted">{card.hint}</p> : null}
     </>
   );
-  const className = "block rounded-card border border-hairline bg-surface p-4 text-left transition-colors duration-motion hover:bg-surface-2";
+  const className = cn(
+    "block rounded-card border border-hairline border-l-4 bg-surface px-3.5 py-3 text-left transition-colors duration-motion hover:bg-surface-2",
+    late ? "border-l-ruby" : soon ? "border-l-amber" : "border-l-pri",
+  );
   if (!card.href) return <div className={className}>{body}</div>;
   return (
     <Link to={card.href} className={className}>
       {body}
     </Link>
-  );
-}
-
-function ProgressRing({ value, target }: { value: number; target: number }) {
-  const ratio = target <= 0 ? 0 : Math.max(0, Math.min(1, value / target));
-  const radius = 16;
-  const circumference = 2 * Math.PI * radius;
-  return (
-    <svg viewBox="0 0 40 40" className="size-10 shrink-0" aria-label={`${value} of ${target}`}>
-      <circle cx="20" cy="20" r={radius} className="fill-none stroke-hairline" strokeWidth="3" />
-      <circle
-        cx="20"
-        cy="20"
-        r={radius}
-        className="fill-none stroke-gold"
-        strokeWidth="3"
-        strokeLinecap="round"
-        strokeDasharray={`${circumference * ratio} ${circumference}`}
-        transform="rotate(-90 20 20)"
-      />
-    </svg>
   );
 }
 
@@ -141,7 +121,7 @@ export function WorkCardView({
           />
         ) : null}
         <div className="min-w-0 flex-1">
-          <button type="button" className="max-w-full truncate text-left font-serif text-2xl text-ink" onClick={() => onOpen(item.rowId)}>
+          <button type="button" className="max-w-full truncate text-left text-[15px] font-semibold text-ink" onClick={() => onOpen(item.rowId)}>
             {item.customer}
           </button>
           {equipment ? <p className="truncate text-sm text-ink-2">{equipment}</p> : null}
@@ -244,24 +224,132 @@ export function WorkList({
         <Input data-search="" value={q} aria-label="Search" placeholder="Search" onChange={(event) => setQ(event.target.value)} />
       ) : null}
       {shown.length === 0 ? <EmptyState message={empty} /> : null}
-      {shown.map((item) => (
-        <WorkCardView
-          key={item.rowId}
-          datasetId={datasetId}
-          item={item}
-          selected={selected?.has(item.rowId)}
-          onToggle={onToggle}
-          onOpen={onOpen}
-        >
-          {renderActions ? renderActions(item) : null}
-        </WorkCardView>
-      ))}
+      {shown.length > 0 ? (
+        <>
+          <div className="hidden overflow-x-auto rounded-card border border-hairline bg-surface md:block">
+            <table className="w-full min-w-[720px] border-collapse text-[15px]">
+              <thead>
+                <tr>
+                  {onToggle ? <th className="w-10 border-b-2 border-hairline px-2 py-2" /> : null}
+                  <th className="border-b-2 border-hairline px-2.5 py-2 text-left text-[12.5px] font-semibold text-ink-2">Date</th>
+                  <th className="border-b-2 border-hairline px-2.5 py-2 text-left text-[12.5px] font-semibold text-ink-2">Machine</th>
+                  <th className="border-b-2 border-hairline px-2.5 py-2 text-left text-[12.5px] font-semibold text-ink-2">Customer</th>
+                  <th className="border-b-2 border-hairline px-2.5 py-2 text-left text-[12.5px] font-semibold text-ink-2">Status</th>
+                  <th className="border-b-2 border-hairline px-2.5 py-2 text-left text-[12.5px] font-semibold text-ink-2" />
+                </tr>
+              </thead>
+              <tbody>
+                {shown.map((item) => (
+                  <WorkTableRow
+                    key={item.rowId}
+                    datasetId={datasetId}
+                    item={item}
+                    selected={selected?.has(item.rowId)}
+                    onToggle={onToggle}
+                    onOpen={onOpen}
+                  >
+                    {renderActions ? renderActions(item) : null}
+                  </WorkTableRow>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="flex flex-col gap-3 md:hidden">
+            {shown.map((item) => (
+              <WorkCardView
+                key={item.rowId}
+                datasetId={datasetId}
+                item={item}
+                selected={selected?.has(item.rowId)}
+                onToggle={onToggle}
+                onOpen={onOpen}
+              >
+                {renderActions ? renderActions(item) : null}
+              </WorkCardView>
+            ))}
+          </div>
+        </>
+      ) : null}
       {hasMore ? (
         <Button variant="secondary" onClick={onLoadMore} disabled={loadingMore}>
           {loadingMore ? "Loading…" : `Load more (${items.length} of ${total})`}
         </Button>
       ) : null}
     </div>
+  );
+}
+
+function WorkTableRow({
+  datasetId,
+  item,
+  selected,
+  onToggle,
+  onOpen,
+  children,
+}: {
+  datasetId: string;
+  item: WorkCardItem;
+  selected?: boolean;
+  onToggle?: (rowId: string) => void;
+  onOpen: (rowId: string) => void;
+  children?: ReactNode;
+}) {
+  const active = useSyncExternalStore(subscribeActive, getActiveKey, emptyActive) === `${datasetId}:${item.rowId}`;
+  const stripe =
+    item.bucket === "overdue"
+      ? "shadow-[inset_3px_0_0_var(--ruby)]"
+      : item.bucket === "today"
+        ? "shadow-[inset_3px_0_0_var(--amber)]"
+        : item.bucket === "week"
+          ? "shadow-[inset_3px_0_0_var(--gold)]"
+          : "shadow-[inset_3px_0_0_var(--hairline)]";
+  return (
+    <tr
+      data-work-card=""
+      data-card-key={`${datasetId}:${item.rowId}`}
+      data-dataset-id={datasetId}
+      data-row-id={item.rowId}
+      tabIndex={0}
+      className={cn("border-b border-hairline align-top last:border-b-0", stripe, active && "bg-gold-soft")}
+    >
+      {onToggle ? (
+        <td className="px-2 py-2">
+          <input
+            type="checkbox"
+            className="size-4 accent-pri"
+            checked={selected === true}
+            aria-label={`Select ${item.customer}`}
+            onChange={() => onToggle(item.rowId)}
+          />
+        </td>
+      ) : null}
+      <td className="whitespace-nowrap px-2.5 py-2 tabular-nums">{item.scheduled || "—"}</td>
+      <td className="px-2.5 py-2">
+        <button type="button" className="text-left font-medium text-ink" onClick={() => onOpen(item.rowId)}>
+          {item.equipment || "—"}
+        </button>
+        {item.serial ? <div className="text-[13px] text-ink-2">{item.serial}{item.pmsLabel ? `, ${item.pmsLabel}` : ""}</div> : null}
+      </td>
+      <td className="px-2.5 py-2">
+        <button type="button" className="text-left font-medium text-ink" onClick={() => onOpen(item.rowId)}>
+          {item.customer}
+        </button>
+        {item.city ? <div className="text-[13px] text-ink-2">{item.city}</div> : null}
+      </td>
+      <td className="px-2.5 py-2">
+        <div className="flex flex-wrap gap-1">
+          {item.pills.map((pill) => (
+            <Pill key={pill.label} tone={pill.tone}>
+              {pill.label}
+            </Pill>
+          ))}
+        </div>
+        {item.summary ? <div className="mt-1 text-[13px] text-ink-2">{item.summary}</div> : null}
+      </td>
+      <td className="px-2.5 py-2">
+        <div className="flex flex-wrap gap-2">{children}</div>
+      </td>
+    </tr>
   );
 }
 
@@ -313,8 +401,8 @@ export function UploadDropzone() {
         if (file) void submit(file);
       }}
     >
-      <span className="font-serif text-3xl text-ink">Upload Excel</span>
-      <span className="text-sm text-ink-2">Drop an .xlsx file here, or choose one.</span>
+      <span className="font-serif text-[28px] font-semibold text-ink">Upload Excel</span>
+      <span className="text-sm text-ink-2">Drop an .xlsx file here, or choose one. Same columns as the data handling sheet.</span>
       <input
         type="file"
         accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"

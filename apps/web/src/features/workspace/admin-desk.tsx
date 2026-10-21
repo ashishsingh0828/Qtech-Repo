@@ -10,6 +10,7 @@ import { initials } from "../../lib/initials";
 import { queryClient } from "../../lib/query";
 import { useAuth } from "../auth/auth-gate";
 import { downloadWorkbook } from "../records/download";
+import { rememberDataset } from "../records/storage";
 import { bulkAction } from "./actions";
 import { KpiRow, QuietEmpty, UploadDropzone, WorkspaceHeader } from "./parts";
 import { useSelectedDataset } from "./use-dataset";
@@ -71,16 +72,76 @@ export function AdminDesk() {
   const peak = Math.max(1, ...(workload.data?.members.map((member) => member.open) ?? [1]));
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-4">
       <WorkspaceHeader />
       <KpiRow datasetId={datasetId} />
+      <section className="rounded-card border border-hairline bg-surface p-4">
+        <div className="flex flex-wrap items-end gap-2">
+          {hasCapability(user.role, "importData") ? (
+            <Button onClick={() => document.getElementById("admin-excel-upload")?.click()}>Upload Excel</Button>
+          ) : null}
+          {datasetId ? (
+            <Button
+              variant="secondary"
+              onClick={() => {
+                const board = boards.data?.boards.find((item) => item.id === datasetId);
+                void downloadWorkbook(datasetId, board?.name ?? "Engineer_Service_Data").then(
+                  () => toast.success("Workbook exported."),
+                  (error: unknown) => {
+                    if (!isUnauthenticated(error)) toast.error(errorText(error, "Could not export the workbook."));
+                  },
+                );
+              }}
+            >
+              Download Excel
+            </Button>
+          ) : null}
+          {datasetId ? (
+            <Button variant="secondary" asChild>
+              <Link to={`/records/${datasetId}`}>Open contracts</Link>
+            </Button>
+          ) : null}
+        </div>
+        <p className="mt-3 text-[13px] text-ink-2">
+          Upload reads the same columns as your data handling sheet, with PMS 1 to 15 as scheduled dates and PM Date as the date done. Download writes the same layout.
+        </p>
+        <input
+          id="admin-excel-upload"
+          type="file"
+          accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+          className="sr-only"
+          onChange={(event) => {
+            const input = event.currentTarget;
+            const file = input.files?.[0];
+            input.value = "";
+            if (!file) return;
+            if (!file.name.toLowerCase().endsWith(".xlsx")) {
+              toast.error("Please save the file as .xlsx");
+              return;
+            }
+            const body = new FormData();
+            body.append("file", file);
+            void api<{ dataset: { id: string } }>("/api/datasets/import", { method: "POST", body })
+              .then(async (result) => {
+                rememberDataset(user.id, result.dataset.id);
+                await queryClient.invalidateQueries({ queryKey: ["datasets"] });
+                await queryClient.invalidateQueries({ queryKey: ["boards"] });
+                toast.success("Workbook imported.");
+                void navigate(`/records/${result.dataset.id}`);
+              })
+              .catch((error: unknown) => {
+                if (!isUnauthenticated(error)) toast.error(errorText(error, "Could not import the workbook."));
+              });
+          }}
+        />
+      </section>
       {selected.loading ? <Skeleton className="h-40" /> : null}
       {!selected.loading && selected.datasets.length === 0 ? <UploadDropzone /> : null}
       {!selected.loading && selected.datasets.length > 0 && !datasetId ? <QuietEmpty /> : null}
       {datasetId ? (
         <div className="grid gap-6 xl:grid-cols-2">
           <section className="flex flex-col gap-3">
-            <h2 className="font-serif text-2xl text-ink">Team workload</h2>
+            <h2 className="text-[15px] font-semibold text-ink">Team workload</h2>
             {workload.isPending ? <Skeleton className="h-24" /> : null}
             {workload.data?.members.map((member) => (
               <div key={member.id} className="rounded-card border border-hairline bg-surface p-4">
@@ -97,7 +158,7 @@ export function AdminDesk() {
               </div>
             ))}
             {workload.data && workload.data.members.length === 0 ? <QuietEmpty /> : null}
-            <h2 className="mt-4 font-serif text-2xl text-ink">Live activity</h2>
+            <h2 className="mt-4 text-[15px] font-semibold text-ink">Live activity</h2>
             {feed.isPending ? <Skeleton className="h-24" /> : null}
             <ul className="flex flex-col">
               {feed.data?.items.map((item) => (
@@ -122,7 +183,7 @@ export function AdminDesk() {
             </ul>
           </section>
           <section className="flex flex-col gap-3">
-            <h2 className="font-serif text-2xl text-ink">Datasets</h2>
+            <h2 className="text-[15px] font-semibold text-ink">Contracts and data validation</h2>
             {boards.isPending ? <Skeleton className="h-32" /> : null}
             {boards.data?.boards.map((board) => {
               const total = board.stages.reduce((sum, stage) => sum + stage.count, 0);
@@ -133,7 +194,7 @@ export function AdminDesk() {
                       {initials(board.uploadedByName)}
                     </span>
                     <div className="min-w-0 flex-1">
-                      <p className="truncate font-serif text-xl text-ink">{board.name}</p>
+                      <p className="truncate text-lg font-semibold text-ink">{board.name}</p>
                       <p className="text-sm text-ink-2">
                         {board.rowCount} × {board.columnCount} · {formatDisplayDateTime(board.updatedAt, timeZone || "UTC")}
                       </p>
@@ -177,7 +238,7 @@ export function AdminDesk() {
                 </article>
               );
             })}
-            <h2 className="mt-4 font-serif text-2xl text-ink">Data health</h2>
+            <h2 className="mt-4 text-[15px] font-semibold text-ink">Data health</h2>
             {health.isPending ? <Skeleton className="h-24" /> : null}
             {health.data ? (
               <div className="rounded-card border border-hairline bg-surface p-4 text-sm text-ink">

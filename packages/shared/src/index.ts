@@ -98,7 +98,7 @@ export {
   storedCell,
 } from "./projection";
 export type { CellHistoryEntry, DatasetDetail, RecentEdit, RowProjection, StoredCell } from "./projection";
-export { NAV_ICONS, ROLE_REGISTRY, ROLES, isRole } from "./roles";
+export { NAV_ICONS, ROLE_COPY, ROLE_REGISTRY, ROLES, isRole } from "./roles";
 export type { NavIcon, NavItem, Role, RoleDefinition } from "./roles";
 export {
   callStatusSchema,

@@ -82,8 +82,8 @@ export function ServiceDesk() {
       {datasetId ? (
         <Tabs value={tab} onValueChange={(value) => { if ((TABS as readonly string[]).includes(value)) setTab(value as (typeof TABS)[number]); }}>
           <TabsList>
-            <TabsTrigger value="agenda">Agenda</TabsTrigger>
-            <TabsTrigger value="amc">AMC leads</TabsTrigger>
+            <TabsTrigger value="agenda">My PM visits</TabsTrigger>
+            <TabsTrigger value="amc">My AMC follow-ups</TabsTrigger>
             <TabsTrigger value="calls">Calls</TabsTrigger>
             <TabsTrigger value="followups">Follow-ups</TabsTrigger>
           </TabsList>

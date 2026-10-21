@@ -30,7 +30,7 @@ export async function buildExportWorkbook(
   const groupById = new Map(groups.map((group) => [group.id, group]));
 
   const workbook = new Workbook();
-  const sheet = workbook.addWorksheet("Sheet1");
+  const sheet = workbook.addWorksheet("data handling");
   let start = 0;
   for (let index = 0; index < columns.length; index += 1) {
     const column = columns[index];

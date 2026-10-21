@@ -13,6 +13,8 @@ export default {
         muted: "var(--muted)",
         navy: "var(--navy)",
         "navy-2": "var(--navy-2)",
+        pri: "var(--pri)",
+        "pri-2": "var(--pri-2)",
         gold: "var(--gold)",
         "gold-soft": "var(--gold-soft)",
         emerald: "var(--emerald)",
@@ -27,18 +29,18 @@ export default {
         "stone-bg": "var(--stone-bg)",
       },
       fontFamily: {
-        sans: ["Inter", "ui-sans-serif", "system-ui", "sans-serif"],
-        serif: ['"Instrument Serif"', "ui-serif", "Georgia", "serif"],
+        sans: ['"IBM Plex Sans"', "ui-sans-serif", "system-ui", "sans-serif"],
+        serif: ['"Barlow Condensed"', "ui-sans-serif", "system-ui", "sans-serif"],
       },
       borderRadius: {
-        card: "12px",
-        control: "8px",
+        card: "6px",
+        control: "6px",
       },
       boxShadow: {
-        float: "0 12px 32px rgba(20, 23, 31, 0.08)",
+        float: "0 12px 32px rgba(13, 34, 38, 0.12)",
       },
       maxWidth: {
-        content: "1440px",
+        content: "1120px",
       },
       transitionDuration: {
         motion: "160ms",

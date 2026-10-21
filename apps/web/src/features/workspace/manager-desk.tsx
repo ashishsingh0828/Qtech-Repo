@@ -86,9 +86,9 @@ export function ManagerDesk() {
         <Tabs value={tab} onValueChange={(value) => { if (TABS.includes(value as (typeof TABS)[number])) setTab(value as (typeof TABS)[number]); }}>
           <TabsList>
             <TabsTrigger value="verification">Verification queue</TabsTrigger>
-            <TabsTrigger value="amc">AMC pipeline</TabsTrigger>
-            <TabsTrigger value="overdue">Overdue</TabsTrigger>
-            <TabsTrigger value="team">Team</TabsTrigger>
+            <TabsTrigger value="amc">AMC follow-up</TabsTrigger>
+            <TabsTrigger value="overdue">Escalated PMs</TabsTrigger>
+            <TabsTrigger value="team">Assign engineers</TabsTrigger>
           </TabsList>
           <TabsContent value="verification">
             <WorkList
@@ -139,7 +139,7 @@ export function ManagerDesk() {
           <TabsContent value="team">
             <div className="grid gap-6 xl:grid-cols-2">
               <section>
-                <h2 className="mb-3 font-serif text-2xl text-ink">Done today</h2>
+                <h2 className="mb-3 text-[15px] font-semibold text-ink">Done today</h2>
                 {workload.data?.members.map((member) => (
                   <p key={member.id} className="flex justify-between border-b border-hairline py-2 text-sm">
                     <span>{member.name}</span>
@@ -148,7 +148,7 @@ export function ManagerDesk() {
                 ))}
               </section>
               <section className="flex flex-col gap-3">
-                <h2 className="font-serif text-2xl text-ink">Assign unassigned</h2>
+                <h2 className="text-[15px] font-semibold text-ink">Assign unassigned</h2>
                 <div className="flex flex-wrap gap-2">
                   <Button variant={slot === "validator" ? "primary" : "secondary"} onClick={() => { setSlot("validator"); setAssignee(""); setSelectedIds(new Set()); }}>
                     Validator
@@ -281,7 +281,7 @@ function QueueBlock({
 }) {
   return (
     <section className="flex flex-col gap-3">
-      <h2 className="font-serif text-2xl text-ink">{title}</h2>
+      <h2 className="text-[15px] font-semibold text-ink">{title}</h2>
       <WorkList datasetId={datasetId} {...cards} onOpen={onOpen} />
     </section>
   );

@@ -376,7 +376,7 @@ export function RecordsPage() {
     const removedBy = deletedName(datasetId);
     return (
       <div className="flex flex-col gap-6">
-        <PageHeader title="Records" subtitle="Imported rows." />
+        <PageHeader title="Contracts" subtitle="Imported rows." />
         {removedBy ? (
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-card border border-hairline bg-gold-soft px-4 py-3">
             <p className="text-sm text-ink">This dataset was deleted by {removedBy}</p>
@@ -450,7 +450,7 @@ export function RecordsPage() {
       ) : null}
       <PageHeader
         title={detail.name}
-        subtitle="Records"
+        subtitle="Contracts in the same layout as the Excel sheet."
         actions={
           <>
             <Badge>{detail.rowCount} rows</Badge>

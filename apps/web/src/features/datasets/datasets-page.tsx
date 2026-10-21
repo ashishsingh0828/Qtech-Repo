@@ -66,7 +66,7 @@ export function DatasetsPage() {
   if (query.isError) {
     return (
       <div className="flex flex-col gap-6">
-        <PageHeader title="Datasets" subtitle="Imported workbooks." />
+        <PageHeader title="Excel sheets" subtitle="Upload or download the data handling workbook." />
         <div className="rounded-card border border-hairline bg-surface p-6">
           <p className="text-sm text-ink-2">Could not load datasets.</p>
           <Button className="mt-4" onClick={() => void query.refetch()}>
@@ -82,15 +82,15 @@ export function DatasetsPage() {
   return (
     <div className="flex min-w-0 flex-col gap-6">
       <PageHeader
-        title="Datasets"
-        subtitle="Imported workbooks."
-        actions={canImport ? <Button onClick={() => setImportOpen(true)}>Import workbook</Button> : null}
+        title="Excel sheets"
+        subtitle="Upload or download the data handling workbook."
+        actions={canImport ? <Button onClick={() => setImportOpen(true)}>Upload Excel</Button> : null}
       />
       {datasets.length === 0 ? (
         <div className="rounded-card border border-hairline bg-surface">
           <EmptyState
             message="No datasets yet."
-            action={canImport ? <Button onClick={() => setImportOpen(true)}>Import workbook</Button> : undefined}
+            action={canImport ? <Button onClick={() => setImportOpen(true)}>Upload Excel</Button> : undefined}
           />
         </div>
       ) : (
@@ -339,7 +339,7 @@ function ImportDialog({
       <DialogContent>
         <form noValidate onSubmit={onSubmit}>
           <DialogHeader>
-            <DialogTitle>Import workbook</DialogTitle>
+            <DialogTitle>Upload Excel</DialogTitle>
             <DialogDescription>Use an .xlsx file. The first sheet that contains data is imported.</DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-3 px-5 py-2">

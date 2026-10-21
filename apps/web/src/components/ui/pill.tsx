@@ -24,7 +24,7 @@ export function Pill({
   return (
     <span
       className={cn(
-        "inline-flex max-w-full items-center truncate rounded-full px-2 py-0.5 text-xs font-medium",
+        "inline-flex max-w-full items-center truncate rounded-[10px] px-2 py-px text-xs font-medium",
         tones[tone],
         className,
       )}

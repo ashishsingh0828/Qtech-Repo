@@ -1,5 +1,5 @@
 import type { NavIcon, NavItem } from "@app/shared";
-import { ROLE_REGISTRY } from "@app/shared";
+import { ROLE_COPY, ROLE_REGISTRY } from "@app/shared";
 import { LogOut, Menu, Rows3, Shield, Table, Trash2, Users, X, LayoutDashboard, Columns3, ScrollText, Ellipsis } from "lucide-react";
 import { useEffect, useState, type ComponentType } from "react";
 import { createPortal } from "react-dom";
@@ -108,18 +108,21 @@ export function AppShell() {
     }
   }
 
+  const copy = ROLE_COPY[user.role];
+
   return (
     <RealtimeProvider>
-    <div className="grid h-dvh grid-cols-1 overflow-hidden bg-canvas md:grid-cols-[64px_minmax(0,1fr)] xl:grid-cols-[232px_minmax(0,1fr)]">
-      <aside className="hidden min-h-0 min-w-0 bg-navy text-canvas md:flex md:flex-col">
+    <div className="grid h-dvh grid-cols-1 overflow-hidden bg-canvas md:grid-cols-[64px_minmax(0,1fr)] xl:grid-cols-[244px_minmax(0,1fr)]">
+      <aside className="hidden min-h-0 min-w-0 bg-navy text-[#c9dcdc] md:flex md:flex-col">
         <Sidebar appName={appName} items={items} collapsed onOpenRail={() => setRailOpen(true)} />
       </aside>
       <div className="flex min-h-0 min-w-0 flex-col">
         <header className="z-topbar flex h-[var(--topbar-h)] shrink-0 items-center gap-3 border-b border-hairline bg-surface px-4 md:px-6">
-          <NavLink to="/" className="hidden min-w-0 shrink truncate font-serif text-lg text-ink sm:inline xl:hidden">
-            {appName}
+          <NavLink to="/" className="hidden min-w-0 shrink truncate font-serif text-xl font-semibold text-ink sm:inline xl:hidden">
+            ServiceDesk
           </NavLink>
           <DatasetSwitcher />
+          <p className="hidden min-w-0 truncate text-sm text-ink-2 xl:block">{copy.blurb}</p>
           <div className="ml-auto flex items-center gap-2">
             <LiveStatus />
             <NotificationBell />
@@ -179,7 +182,7 @@ export function AppShell() {
                 className="fixed inset-0 z-scrim bg-navy/40"
                 onClick={() => setRailOpen(false)}
               />
-              <div className="fixed inset-y-0 left-0 z-drawer flex w-[232px] max-w-[92vw] flex-col bg-navy text-canvas shadow-float">
+              <div className="fixed inset-y-0 left-0 z-drawer flex w-[244px] max-w-[92vw] flex-col bg-navy text-[#c9dcdc] shadow-float">
                 <Sidebar appName={appName} items={items} onClose={() => setRailOpen(false)} />
               </div>
             </div>,
@@ -206,38 +209,38 @@ function Sidebar({
   onClose?: () => void;
 }) {
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className="flex min-h-0 flex-1 flex-col px-2 py-5">
       <div
         className={cn(
-          "flex h-14 items-center gap-2 px-3",
-          collapsed && "justify-center px-0 xl:justify-start xl:px-3",
+          "mb-6 flex items-center gap-2.5 px-2",
+          collapsed && "justify-center px-0 xl:justify-start xl:px-2",
         )}
       >
         {collapsed ? (
-          <NavLink to="/" className="font-serif text-lg text-canvas xl:hidden" aria-label={appName}>
-            Q
+          <NavLink to="/" className="grid size-[34px] place-items-center rounded-[4px] bg-gold font-serif text-[18px] font-bold text-[#2a1d00] xl:hidden" aria-label={appName}>
+            SD
           </NavLink>
         ) : null}
-        <NavLink
-          to="/"
-          className={cn("min-w-0 flex-1 truncate font-serif text-lg text-canvas", collapsed && "hidden xl:inline")}
-        >
-          {appName}
+        <NavLink to="/" className={cn("flex min-w-0 items-center gap-2.5", collapsed && "hidden xl:flex")}>
+          <span className="grid size-[34px] shrink-0 place-items-center rounded-[4px] bg-gold font-serif text-[18px] font-bold text-[#2a1d00]">
+            SD
+          </span>
+          <b className="truncate font-serif text-2xl font-semibold text-white">ServiceDesk</b>
         </NavLink>
         {onClose ? (
-          <IconButton label="Close navigation" className="text-canvas hover:bg-navy-2" onClick={onClose}>
+          <IconButton label="Close navigation" className="ml-auto text-[#c9dcdc] hover:bg-navy-2" onClick={onClose}>
             <X className="size-4" strokeWidth={1.5} />
           </IconButton>
         ) : null}
       </div>
       {collapsed && onOpenRail ? (
-        <div className="flex justify-center xl:hidden">
-          <IconButton label="Open navigation" className="text-canvas hover:bg-navy-2" onClick={onOpenRail}>
+        <div className="mb-3 flex justify-center xl:hidden">
+          <IconButton label="Open navigation" className="text-[#c9dcdc] hover:bg-navy-2" onClick={onOpenRail}>
             <Menu className="size-4" strokeWidth={1.5} />
           </IconButton>
         </div>
       ) : null}
-      <nav className="flex min-h-0 flex-1 flex-col gap-1 px-2">
+      <nav className="flex min-h-0 flex-1 flex-col gap-0.5" aria-label="Sign in as">
         {items.map((item) => (
           <NavItemLink key={item.id} item={item} collapsed={collapsed} />
         ))}
@@ -254,9 +257,9 @@ function NavItemLink({ item, collapsed }: { item: NavItem; collapsed: boolean })
       end={item.path === "/"}
       className={({ isActive }) =>
         cn(
-          "relative flex min-h-11 min-w-0 items-center gap-3 rounded-control px-3 text-sm text-canvas hover:bg-navy-2",
+          "relative flex min-h-11 min-w-0 items-center gap-3 rounded-[6px] border-l-[3px] border-transparent px-3 text-[15px] text-[#c9dcdc] hover:bg-white/5",
           collapsed && "justify-center px-0 xl:justify-start xl:px-3",
-          isActive && "bg-navy-2 before:absolute before:left-0 before:h-6 before:w-0.5 before:bg-gold",
+          isActive && "border-l-gold bg-white/10 text-white",
         )
       }
     >
